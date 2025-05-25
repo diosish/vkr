@@ -43,8 +43,8 @@ class VolunteerProfile(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Связи - используем backref для создания обратной связи
-    user = relationship("User", backref="volunteer_profile")
+    # Связь с пользователем - правильная двусторонняя связь
+    user = relationship("User", back_populates="volunteer_profile")
 
     @property
     def age(self):
@@ -60,13 +60,22 @@ class VolunteerProfile(Base):
     @property
     def completion_percentage(self):
         """Процент заполнения профиля"""
+        # Получаем пользователя если нужно
+        user_phone = self.user.phone if self.user else None
+        user_email = self.user.email if self.user else None
+
         fields = [
-            self.middle_name, self.birth_date, self.user.phone if self.user else None,
-            self.user.email if self.user else None, self.emergency_contact_name,
-            self.emergency_contact_phone, self.education,
+            self.middle_name,
+            self.birth_date,
+            user_phone,
+            user_email,
+            self.emergency_contact_name,
+            self.emergency_contact_phone,
+            self.education,
             self.skills and len(self.skills) > 0 if self.skills else False,
             self.experience_description
         ]
+
         filled = sum(1 for field in fields if field)
         return int((filled / len(fields)) * 100) if fields else 0
 

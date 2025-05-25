@@ -1,8 +1,13 @@
 # reset_db.py
-"""Скрипт для пересоздания базы данных"""
+"""Скрипт для пересоздания базы данных с исправленными моделями"""
 
 import os
+import sys
 from pathlib import Path
+
+# Добавляем текущую директорию в PYTHONPATH
+sys.path.insert(0, str(Path('.').absolute()))
+
 from backend.database import engine, Base, SessionLocal
 from backend.models.user import User, UserRole
 from backend.models.volunteer_profile import VolunteerProfile
@@ -71,10 +76,25 @@ def create_test_data():
             role=UserRole.VOLUNTEER
         )
 
-        db.add_all([admin_user, organizer_user, volunteer_user])
-        db.commit()
-        db.refresh(organizer_user)
-        db.refresh(volunteer_user)
+        # Гостевой пользователь для тестирования без Telegram
+        guest_user = User(
+            telegram_user_id=999999999,
+            telegram_username="guest_user",
+            first_name="Гость",
+            last_name="Пользователь",
+            email=None,
+            phone=None,
+            role=UserRole.VOLUNTEER
+        )
+
+        db.add_all([admin_user, organizer_user, volunteer_user, guest_user])
+        db.flush()  # Получаем ID пользователей
+
+        print(f"  👤 Создано пользователей: 4")
+        print(f"    - Админ: {admin_user.id}")
+        print(f"    - Организатор: {organizer_user.id}")
+        print(f"    - Волонтер: {volunteer_user.id}")
+        print(f"    - Гость: {guest_user.id}")
 
         # Создаем профиль для волонтера
         volunteer_profile = VolunteerProfile(
@@ -96,7 +116,17 @@ def create_test_data():
             profile_completed=True
         )
 
-        db.add(volunteer_profile)
+        # Создаем базовый профиль для гостя
+        guest_profile = VolunteerProfile(
+            user_id=guest_user.id,
+            skills=[],
+            interests=[],
+            languages=["ru"],
+            preferred_activities=[],
+            profile_completed=False
+        )
+
+        db.add_all([volunteer_profile, guest_profile])
 
         # Создаем тестовые мероприятия
         events_data = [
@@ -139,6 +169,27 @@ def create_test_data():
                 "contact_phone": "+7 (999) 333-33-33",
                 "status": EventStatus.PUBLISHED,
                 "published_at": datetime.utcnow()
+            },
+            {
+                "creator_id": organizer_user.id,
+                "title": "Благотворительный забег",
+                "description": "Спортивное мероприятие для сбора средств на лечение детей. Участвуют как бегуны, так и волонтеры для организации.",
+                "short_description": "Бегите ради доброго дела!",
+                "category": EventCategory.SPORTS,
+                "tags": ["спорт", "забег", "благотворительность"],
+                "location": "Стадион \"Центральный\"",
+                "address": "ул. Спортивная, 5",
+                "start_date": datetime(2024, 12, 25, 9, 0),
+                "end_date": datetime(2024, 12, 25, 15, 0),
+                "max_volunteers": 15,
+                "required_skills": [],
+                "preferred_skills": ["Спортивная подготовка", "Организаторские способности"],
+                "what_to_bring": "Спортивная одежда",
+                "meal_provided": True,
+                "contact_person": "Петр Спортивный",
+                "contact_phone": "+7 (999) 555-55-55",
+                "status": EventStatus.PUBLISHED,
+                "published_at": datetime.utcnow()
             }
         ]
 
@@ -148,13 +199,15 @@ def create_test_data():
 
         db.commit()
 
-        print("  ✅ Тестовые данные созданы:")
-        print(f"    👤 Пользователи: 3")
+        print(f"  ✅ Тестовые данные созданы:")
+        print(f"    👤 Пользователи: 4")
         print(f"    📅 Мероприятия: {len(events_data)}")
-        print(f"    👨‍💼 Профили волонтеров: 1")
+        print(f"    👨‍💼 Профили волонтеров: 2")
 
     except Exception as e:
         print(f"  ❌ Ошибка создания тестовых данных: {e}")
+        import traceback
+        traceback.print_exc()
         db.rollback()
         raise
     finally:
@@ -162,4 +215,6 @@ def create_test_data():
 
 
 if __name__ == "__main__":
+    print("🔄 Пересоздание базы данных...")
     reset_database()
+    print("🎉 Готово! Можете запускать приложение.")

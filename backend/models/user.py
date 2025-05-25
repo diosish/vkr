@@ -36,6 +36,13 @@ class User(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     last_activity = Column(DateTime, default=datetime.utcnow)
 
+    # Связи - правильно настроенная связь с профилем волонтера
+    volunteer_profile = relationship(
+        "VolunteerProfile",
+        uselist=False,  # Это важно! Указываем что это один объект, а не список
+        back_populates="user"
+    )
+
     @property
     def full_name(self):
         """Полное имя"""
