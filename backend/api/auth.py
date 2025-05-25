@@ -248,11 +248,21 @@ async def verify_auth(
 
         # Проверяем нужна ли дополнительная регистрация
         requires_registration = False
+        profile_completed = False
+        completion_percentage = 0
+
         if user.role == UserRole.VOLUNTEER:
             # Для волонтеров проверяем заполненность профиля
             requires_registration = not user.email or not user.phone
-            if user.volunteer_profile:
-                requires_registration = requires_registration or user.volunteer_profile.completion_percentage < 70
+
+            # Правильно обрабатываем volunteer_profile (может быть None)
+            if hasattr(user, 'volunteer_profile') and user.volunteer_profile:
+                profile_completed = user.volunteer_profile.profile_completed
+                completion_percentage = user.volunteer_profile.completion_percentage
+                requires_registration = requires_registration or completion_percentage < 70
+            else:
+                # Если профиля нет, требуется регистрация
+                requires_registration = True
 
         # Формируем ответ
         user_data = UserResponse(
@@ -273,8 +283,8 @@ async def verify_auth(
             display_name=user.display_name,
             created_at=user.created_at,
             last_activity=user.last_activity,
-            profile_completed=user.volunteer_profile.profile_completed if user.volunteer_profile else False,
-            completion_percentage=user.volunteer_profile.completion_percentage if user.volunteer_profile else 0
+            profile_completed=profile_completed,
+            completion_percentage=completion_percentage
         )
 
         return AuthResponse(
@@ -295,6 +305,15 @@ async def get_current_user_info(
         current_user: User = Depends(get_current_user)
 ):
     """Получить информацию о текущем пользователе"""
+
+    # Правильно обрабатываем volunteer_profile
+    profile_completed = False
+    completion_percentage = 0
+
+    if hasattr(current_user, 'volunteer_profile') and current_user.volunteer_profile:
+        profile_completed = current_user.volunteer_profile.profile_completed
+        completion_percentage = current_user.volunteer_profile.completion_percentage
+
     user_data = UserResponse(
         id=current_user.id,
         telegram_user_id=current_user.telegram_user_id,
@@ -313,8 +332,8 @@ async def get_current_user_info(
         display_name=current_user.display_name,
         created_at=current_user.created_at,
         last_activity=current_user.last_activity,
-        profile_completed=current_user.volunteer_profile.profile_completed if current_user.volunteer_profile else False,
-        completion_percentage=current_user.volunteer_profile.completion_percentage if current_user.volunteer_profile else 0
+        profile_completed=profile_completed,
+        completion_percentage=completion_percentage
     )
 
     return user_data
@@ -342,11 +361,12 @@ async def complete_registration(
         # Обновляем профиль волонтера если пользователь - волонтер
         if current_user.role == UserRole.VOLUNTEER:
             # Создаем профиль если его нет
-            if not current_user.volunteer_profile:
+            if not hasattr(current_user, 'volunteer_profile') or not current_user.volunteer_profile:
                 volunteer_profile = VolunteerProfile(user_id=current_user.id)
                 db.add(volunteer_profile)
                 db.flush()  # Чтобы получить ID
-                current_user.volunteer_profile = volunteer_profile
+                # Обновляем связь
+                db.refresh(current_user)
 
             vp = current_user.volunteer_profile
 
@@ -370,7 +390,9 @@ async def complete_registration(
             required_fields = [
                 vp.middle_name, vp.birth_date, current_user.phone, current_user.email,
                 vp.emergency_contact_name, vp.emergency_contact_phone,
-                vp.education, vp.skills, vp.experience_description
+                vp.education,
+                vp.skills and len(vp.skills) > 0 if vp.skills else False,
+                vp.experience_description
             ]
 
             filled_count = sum(1 for field in required_fields if field)

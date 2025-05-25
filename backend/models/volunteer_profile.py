@@ -43,7 +43,7 @@ class VolunteerProfile(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Связи
+    # Связи - используем backref для создания обратной связи
     user = relationship("User", backref="volunteer_profile")
 
     @property
@@ -51,8 +51,9 @@ class VolunteerProfile(Base):
         """Возраст"""
         if self.birth_date:
             today = date.today()
-            return today.year - self.birth_date.year - (
-                (today.month, today.day) < (self.birth_date.month, self.birth_date.day)
+            birth_date = self.birth_date.date() if hasattr(self.birth_date, 'date') else self.birth_date
+            return today.year - birth_date.year - (
+                (today.month, today.day) < (birth_date.month, birth_date.day)
             )
         return None
 
@@ -62,7 +63,9 @@ class VolunteerProfile(Base):
         fields = [
             self.middle_name, self.birth_date, self.user.phone if self.user else None,
             self.user.email if self.user else None, self.emergency_contact_name,
-            self.emergency_contact_phone, self.education, self.skills, self.experience_description
+            self.emergency_contact_phone, self.education,
+            self.skills and len(self.skills) > 0 if self.skills else False,
+            self.experience_description
         ]
         filled = sum(1 for field in fields if field)
         return int((filled / len(fields)) * 100) if fields else 0

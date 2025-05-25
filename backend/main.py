@@ -1,5 +1,5 @@
 """
-Полное приложение с отдачей React фронтенда
+Полное приложение с отдачей React фронтенда + ДИАГНОСТИКА
 """
 
 from fastapi import FastAPI, Depends, HTTPException
@@ -10,14 +10,70 @@ from contextlib import asynccontextmanager
 from sqlalchemy.orm import Session
 from datetime import datetime
 from pathlib import Path
+import sys
+
+print("=" * 60)
+print("🔍 ДИАГНОСТИКА ИМПОРТОВ")
+print("=" * 60)
 
 # Исправленные импорты - используем абсолютные пути с префиксом backend
-from backend.database import init_db, get_db
-from backend.config import ALLOWED_ORIGINS, WEBAPP_URL, TELEGRAM_BOT_TOKEN
-from backend.models.user import User, UserRole
-from backend.models.volunteer_profile import VolunteerProfile
-from backend.models.event import Event, EventStatus, EventCategory
-from backend.models.registration import Registration, RegistrationStatus
+try:
+    from backend.database import init_db, get_db
+    print("✅ database импортирован")
+except ImportError as e:
+    print(f"❌ database ОШИБКА: {e}")
+
+try:
+    from backend.config import ALLOWED_ORIGINS, WEBAPP_URL, TELEGRAM_BOT_TOKEN
+    print("✅ config импортирован")
+except ImportError as e:
+    print(f"❌ config ОШИБКА: {e}")
+
+try:
+    from backend.models.user import User, UserRole
+    print("✅ User model импортирован")
+except ImportError as e:
+    print(f"❌ User model ОШИБКА: {e}")
+
+try:
+    from backend.models.volunteer_profile import VolunteerProfile
+    print("✅ VolunteerProfile model импортирован")
+except ImportError as e:
+    print(f"❌ VolunteerProfile model ОШИБКА: {e}")
+
+try:
+    from backend.models.event import Event, EventStatus, EventCategory
+    print("✅ Event model импортирован")
+except ImportError as e:
+    print(f"❌ Event model ОШИБКА: {e}")
+
+try:
+    from backend.models.registration import Registration, RegistrationStatus
+    print("✅ Registration model импортирован")
+except ImportError as e:
+    print(f"❌ Registration model ОШИБКА: {e}")
+
+print("=" * 60)
+print("🔍 ПРОВЕРКА ФАЙЛОВ")
+print("=" * 60)
+
+# Проверяем наличие файлов
+files_to_check = [
+    "backend/__init__.py",
+    "backend/api/__init__.py",
+    "backend/api/auth.py",
+    "backend/models/__init__.py",
+    "backend/services/__init__.py"
+]
+
+for file_path in files_to_check:
+    if Path(file_path).exists():
+        print(f"✅ {file_path} существует")
+    else:
+        print(f"❌ {file_path} НЕ НАЙДЕН!")
+
+print(f"📁 Python path: {sys.path}")
+print(f"📁 Current working directory: {Path('.').absolute()}")
 
 # Путь к собранному фронтенду
 FRONTEND_BUILD = Path("frontend/build")
@@ -126,26 +182,6 @@ def create_test_data():
                 "contact_phone": "+7 (999) 333-33-33",
                 "status": EventStatus.PUBLISHED,
                 "published_at": datetime.utcnow()
-            },
-            {
-                "creator_id": organizer_user.id,
-                "title": "Благотворительный забег",
-                "description": "Спортивное мероприятие для сбора средств на благотворительность. Участвуйте сами или помогайте в организации!",
-                "short_description": "Бегите за доброе дело!",
-                "category": EventCategory.SPORTS,
-                "tags": ["спорт", "бег", "благотворительность"],
-                "location": "Стадион Центральный",
-                "address": "пр. Спортивный, 25",
-                "start_date": datetime(2024, 12, 25, 9, 0),
-                "end_date": datetime(2024, 12, 25, 15, 0),
-                "max_volunteers": 15,
-                "required_skills": [],
-                "what_to_bring": "Спортивная одежда",
-                "meal_provided": True,
-                "contact_person": "Алексей Иванов",
-                "contact_phone": "+7 (999) 444-44-44",
-                "status": EventStatus.PUBLISHED,
-                "published_at": datetime.utcnow()
             }
         ]
 
@@ -182,6 +218,42 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+print("=" * 60)
+print("🔌 ПОДКЛЮЧЕНИЕ API РОУТЕРОВ")
+print("=" * 60)
+
+# Подключение API роутеров - ИСПРАВЛЕНО
+try:
+    print("🔍 Попытка импорта backend.api.auth...")
+    from backend.api.auth import router as auth_router
+    app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+    print("✅ Auth API подключен успешно!")
+except ImportError as e:
+    print(f"❌ Auth API НЕ НАЙДЕН: {e}")
+    print("📝 Создайте файл backend/api/auth.py")
+except Exception as e:
+    print(f"❌ Auth API ОШИБКА: {e}")
+
+try:
+    from backend.api.events import router as events_router
+    app.include_router(events_router, prefix="/api/events", tags=["Events"])
+    print("✅ Events API подключен")
+except ImportError as e:
+    print(f"⚠️ Events API не найден: {e}")
+except Exception as e:
+    print(f"❌ Events API ошибка: {e}")
+
+try:
+    from backend.api.registrations import router as registrations_router
+    app.include_router(registrations_router, prefix="/api/registrations", tags=["Registrations"])
+    print("✅ Registrations API подключен")
+except ImportError as e:
+    print(f"⚠️ Registrations API не найден: {e}")
+except Exception as e:
+    print(f"❌ Registrations API ошибка: {e}")
+
+print("=" * 60)
+
 # Статические файлы фронтенда
 if FRONTEND_BUILD.exists():
     app.mount("/static", StaticFiles(directory=FRONTEND_BUILD / "static"), name="static")
@@ -197,6 +269,20 @@ async def health_check():
         "webapp_url": WEBAPP_URL,
         "bot_configured": bool(TELEGRAM_BOT_TOKEN),
         "frontend": FRONTEND_BUILD.exists()
+    }
+
+# Простой тестовый endpoint для проверки
+@app.post("/api/test-auth")
+async def test_auth():
+    """Тестовый endpoint аутентификации"""
+    return {
+        "success": True,
+        "message": "Test auth endpoint works!",
+        "user": {
+            "id": 1,
+            "first_name": "Тест",
+            "role": "volunteer"
+        }
     }
 
 # Отдача React приложения для всех остальных маршрутов
@@ -264,7 +350,7 @@ else:
                 <ul>
                     <li><a href="/docs">📖 Документация</a></li>
                     <li><a href="/health">🔍 Здоровье</a></li>
-                    <li><a href="/api/events">📅 События</a></li>
+                    <li><a href="/api/test-auth">🧪 Тест авторизации</a></li>
                 </ul>
                 
                 <p><strong>WebApp URL:</strong> {WEBAPP_URL}</p>
@@ -272,3 +358,6 @@ else:
         </body>
         </html>
         """)
+
+print("🎯 Main.py загружен успешно!")
+print("=" * 60)
