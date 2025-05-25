@@ -20,7 +20,7 @@ from backend.models.event import Event, EventStatus, EventCategory
 from backend.models.registration import Registration, RegistrationStatus
 
 # Путь к собранному фронтенду
-FRONTEND_BUILD = Path("../frontend/build")
+FRONTEND_BUILD = Path("frontend/build")
 
 # Lifecycle событие
 @asynccontextmanager
@@ -181,6 +181,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Подключение API роутеров
+from backend.api.auth import router as auth_router
+from backend.api.events import router as events_router
+from backend.api.registrations import router as registrations_router
+
+app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
+app.include_router(events_router, prefix="/api/events", tags=["Events"])
+app.include_router(registrations_router, prefix="/api/registrations", tags=["Registrations"])
 
 # Статические файлы фронтенда
 if FRONTEND_BUILD.exists():

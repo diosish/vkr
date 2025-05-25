@@ -455,3 +455,292 @@ a {
   transform: translateX(-10px);
   transition: opacity 200ms, transform 200ms;
 }
+/* Добавьте эти стили в frontend/src/App.css */
+
+/* Registration Form Styles */
+.registration-form {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: var(--spacing-md);
+}
+
+/* Progress Section */
+.progress-section {
+  margin-bottom: var(--spacing-lg);
+}
+
+.steps-indicator {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: var(--spacing-md);
+  overflow-x: auto;
+  padding-bottom: var(--spacing-sm);
+}
+
+.step-indicator {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+  opacity: 0.5;
+  transition: opacity 0.3s ease;
+}
+
+.step-indicator.active {
+  opacity: 1;
+}
+
+.step-indicator.current {
+  opacity: 1;
+  color: var(--tg-button-color);
+}
+
+.step-number {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background-color: var(--tg-hint-color);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+  transition: background-color 0.3s ease;
+}
+
+.step-indicator.active .step-number {
+  background-color: var(--tg-button-color);
+}
+
+.step-title {
+  font-size: var(--font-size-xs);
+  text-align: center;
+  line-height: 1.2;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 4px;
+  background-color: var(--tg-secondary-bg-color);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background-color: var(--tg-button-color);
+  transition: width 0.3s ease;
+}
+
+/* Form Container */
+.form-container {
+  background-color: var(--tg-bg-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow);
+}
+
+.step-content h3 {
+  color: var(--tg-text-color);
+  margin-bottom: var(--spacing-lg);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Multi-select grids */
+.skills-grid,
+.interests-grid,
+.activities-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+.skill-checkbox,
+.interest-checkbox,
+.activity-checkbox {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm);
+  border: 1px solid var(--tg-hint-color);
+  border-radius: var(--border-radius);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  user-select: none;
+}
+
+.skill-checkbox:hover,
+.interest-checkbox:hover,
+.activity-checkbox:hover {
+  border-color: var(--tg-button-color);
+  background-color: rgba(36, 129, 204, 0.05);
+}
+
+.skill-checkbox input[type="checkbox"],
+.interest-checkbox input[type="checkbox"],
+.activity-checkbox input[type="checkbox"] {
+  margin: 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--tg-button-color);
+}
+
+.skill-checkbox input[type="checkbox"]:checked + span,
+.interest-checkbox input[type="checkbox"]:checked + span,
+.activity-checkbox input[type="checkbox"]:checked + span {
+  color: var(--tg-button-color);
+  font-weight: 500;
+}
+
+/* Form Buttons */
+.form-buttons {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--spacing-lg);
+  gap: var(--spacing-md);
+}
+
+.buttons-left,
+.buttons-right {
+  display: flex;
+  gap: var(--spacing-sm);
+}
+
+.buttons-right {
+  margin-left: auto;
+}
+
+/* Enhanced form controls for registration */
+.form-control.error {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.1);
+}
+
+.error-text {
+  color: #dc3545;
+  font-size: var(--font-size-sm);
+  margin-top: var(--spacing-xs);
+  display: block;
+}
+
+/* Registration specific form groups */
+.form-group label {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  margin-bottom: var(--spacing-sm);
+  font-weight: 500;
+  color: var(--tg-text-color);
+}
+
+.form-group label input[type="checkbox"] {
+  margin: 0;
+  width: 18px;
+  height: 18px;
+  accent-color: var(--tg-button-color);
+}
+
+/* Registration welcome screen */
+.registration-welcome {
+  text-align: center;
+  padding: var(--spacing-xl);
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+.registration-welcome .welcome-icon {
+  font-size: 64px;
+  margin-bottom: var(--spacing-lg);
+}
+
+.registration-welcome h2 {
+  color: var(--tg-text-color);
+  margin-bottom: var(--spacing-md);
+}
+
+.registration-welcome p {
+  color: var(--tg-hint-color);
+  margin-bottom: var(--spacing-lg);
+  line-height: 1.6;
+}
+
+/* Profile completion indicator */
+.profile-completion {
+  background-color: var(--tg-secondary-bg-color);
+  border-radius: var(--border-radius);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-lg);
+}
+
+.completion-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--spacing-sm);
+}
+
+.completion-percentage {
+  font-weight: 600;
+  color: var(--tg-button-color);
+}
+
+.completion-bar {
+  width: 100%;
+  height: 8px;
+  background-color: var(--tg-hint-color);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.completion-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--tg-button-color), #28a745);
+  transition: width 0.3s ease;
+}
+
+/* Responsive design for registration */
+@media (max-width: 480px) {
+  .registration-form {
+    padding: var(--spacing-sm);
+  }
+
+  .steps-indicator {
+    justify-content: flex-start;
+    gap: var(--spacing-md);
+  }
+
+  .step-indicator {
+    min-width: 60px;
+  }
+
+  .step-title {
+    font-size: 10px;
+  }
+
+  .skills-grid,
+  .interests-grid,
+  .activities-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .form-buttons {
+    flex-direction: column;
+    gap: var(--spacing-sm);
+  }
+
+  .buttons-left,
+  .buttons-right {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .form-buttons .btn {
+    width: 100%;
+  }
+}
