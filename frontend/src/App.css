@@ -744,3 +744,91 @@ a {
     width: 100%;
   }
 }
+/* Form row layout */
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--spacing-md);
+}
+
+@media (max-width: 480px) {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Profile specific styles */
+.profile-header {
+  background: linear-gradient(135deg, var(--tg-button-color), rgba(36, 129, 204, 0.8));
+  color: white;
+}
+
+.profile-header h2,
+.profile-header p {
+  color: white;
+}
+
+.form-value {
+  padding: var(--spacing-sm) 0;
+  color: var(--tg-text-color);
+  font-size: var(--font-size-md);
+  margin: 0;
+  min-height: 24px;
+}
+
+.skill-tag {
+  display: inline-block;
+  background-color: var(--tg-button-color);
+  color: var(--tg-button-text-color);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-radius: 16px;
+  font-size: var(--font-size-xs);
+  margin: var(--spacing-xs);
+}
+
+.skills-display {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--spacing-xs);
+}
+
+/* Event creation specific */
+.create-event-page .form-container {
+  max-width: 100%;
+}
+
+.create-event-page .skills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--spacing-sm);
+  margin-top: var(--spacing-sm);
+}
+
+/* Enhanced form controls */
+.form-control:focus {
+  border-color: var(--tg-button-color);
+  box-shadow: 0 0 0 2px rgba(36, 129, 204, 0.1);
+}
+
+.form-control.error {
+  border-color: #dc3545;
+  box-shadow: 0 0 0 2px rgba(220, 53, 69, 0.1);
+}
+
+/* Better spacing for mobile */
+@media (max-width: 480px) {
+  .profile-header {
+    padding: var(--spacing-md);
+  }
+
+  .profile-header > div {
+    flex-direction: column;
+    align-items: flex-start !important;
+    gap: var(--spacing-md);
+  }
+
+  .profile-header .avatar {
+    width: 60px !important;
+    height: 60px !important;
+  }
+}
