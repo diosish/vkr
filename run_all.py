@@ -193,13 +193,16 @@ def run_backend():
     print("🌐 Запуск backend сервера...")
 
     try:
-        # Запускаем сервер из корневой папки с правильным PYTHONPATH
+        # Запускаем сервер через uvicorn с правильным путем к модулю
         env = os.environ.copy()
         env['PYTHONPATH'] = str(Path('.').absolute())
 
+        print(f"    🔧 PYTHONPATH: {env['PYTHONPATH']}")
+
         process = subprocess.Popen([
-            sys.executable, "-m", "backend.main"
-        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
+            sys.executable, "-m", "uvicorn", "backend.main:app",
+            "--host", "0.0.0.0", "--port", "8000", "--reload"
+        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env, cwd=Path('.').absolute())
 
         processes.append(("Backend", process))
 
