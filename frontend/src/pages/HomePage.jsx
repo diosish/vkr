@@ -5,6 +5,30 @@ import { getEvents, getMyRegistrations } from '../services/api';
 import EventCard from '../components/EventCard';
 import LoadingSpinner from '../components/LoadingSpinner';
 import useTelegram from '../hooks/useTelegram';
+import { User, FileText } from 'react-feather';
+
+const getRoleWelcome = (role) => {
+  switch (role) {
+    case 'admin':
+      return {
+        title: 'Панель администратора',
+        description: 'Управляйте системой и пользователями',
+        icon: '🔧'
+      };
+    case 'organizer':
+      return {
+        title: 'Панель организатора',
+        description: 'Создавайте и управляйте мероприятиями',
+        icon: '👔'
+      };
+    default:
+      return {
+        title: 'Добро пожаловать!',
+        description: 'Найдите интересные мероприятия и станьте волонтером',
+        icon: '🤝'
+      };
+  }
+};
 
 const HomePage = ({ user }) => {
   const [stats, setStats] = useState({
@@ -18,32 +42,27 @@ const HomePage = ({ user }) => {
   const { showAlert } = useTelegram();
 
   useEffect(() => {
-    loadHomeData();
-  }, []);
+    if (user) {
+      loadHomeData();
+    }
+  }, [user]);
 
   const loadHomeData = async () => {
     try {
       setLoading(true);
 
-      // Загружаем предстоящие события
       const eventsData = await getEvents({ limit: 3 });
       setRecentEvents(eventsData);
       setStats(prev => ({ ...prev, upcomingEvents: eventsData.length }));
 
-      // Загружаем регистрации пользователя (если волонтер)
       if (user.role === 'volunteer') {
-        try {
-          const registrationsData = await getMyRegistrations();
-          setStats(prev => ({
-            ...prev,
-            myRegistrations: registrationsData.filter(r => r.status === 'confirmed').length,
-            completedEvents: registrationsData.filter(r => r.status === 'completed').length
-          }));
-        } catch (error) {
-          console.log('Не удалось загрузить регистрации:', error);
-        }
+        const registrationsData = await getMyRegistrations();
+        setStats(prev => ({
+          ...prev,
+          myRegistrations: registrationsData.filter(r => r.status === 'confirmed').length,
+          completedEvents: registrationsData.filter(r => r.status === 'completed').length
+        }));
       }
-
     } catch (error) {
       console.error('Ошибка загрузки данных:', error);
       showAlert('Ошибка загрузки данных: ' + error.message);
@@ -52,30 +71,11 @@ const HomePage = ({ user }) => {
     }
   };
 
-  const getRoleWelcome = () => {
-    switch (user.role) {
-      case 'admin':
-        return {
-          title: 'Панель администратора',
-          description: 'Управляйте системой и пользователями',
-          icon: '🔧'
-        };
-      case 'organizer':
-        return {
-          title: 'Панель организатора',
-          description: 'Создавайте и управляйте мероприятиями',
-          icon: '👔'
-        };
-      default:
-        return {
-          title: 'Добро пожаловать!',
-          description: 'Найдите интересные мероприятия и станьте волонтером',
-          icon: '🤝'
-        };
-    }
-  };
+  if (!user) {
+    return <LoadingSpinner message="Загрузка профиля..." />;
+  }
 
-  const roleInfo = getRoleWelcome();
+  const roleInfo = getRoleWelcome(user.role);
 
   if (loading) {
     return <LoadingSpinner message="Загрузка главной страницы..." />;
@@ -159,7 +159,14 @@ const HomePage = ({ user }) => {
       {/* Recent Events */}
       {recentEvents.length > 0 && (
         <div className="recent-events-section">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: '16px'
+            }}
+          >
             <h3 className="mb-0">🔥 Актуальные мероприятия</h3>
             <button
               className="btn btn-outline btn-small"
@@ -221,7 +228,10 @@ const HomePage = ({ user }) => {
 
       {/* Tips Section */}
       <div className="tips-section">
-        <div className="tip-card card" style={{ backgroundColor: 'var(--tg-secondary-bg-color)' }}>
+        <div
+          className="tip-card card"
+          style={{ backgroundColor: 'var(--tg-secondary-bg-color)' }}
+        >
           <h4 className="mb-2">💡 Совет дня</h4>
           {user.role === 'volunteer' ? (
             <p className="text-muted mb-0">

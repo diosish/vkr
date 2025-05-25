@@ -149,6 +149,7 @@ export const showTelegramConfirm = (message, callback) => {
   if (window.Telegram?.WebApp) {
     window.Telegram.WebApp.showConfirm(message, callback);
   } else {
+    // eslint-disable-next-line no-restricted-globals
     const result = confirm(message);
     callback(result);
   }

@@ -66,7 +66,7 @@ const useTelegram = () => {
     if (tg) {
       tg.showConfirm(message, callback);
     } else {
-      const result = confirm(message);
+      const result = window.confirm(message);
       callback(result);
     }
   };

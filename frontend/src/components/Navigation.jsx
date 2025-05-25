@@ -1,69 +1,35 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import {
-  Home,
-  Calendar,
-  User,
-  FileText,
-  Plus
-} from 'lucide-react';
-import useTelegram from '../hooks/useTelegram';
+import { Home, Calendar, Plus, User } from 'react-feather';
 
-const Navigation = ({ user }) => {
+const navItems = [
+  { path: '/', icon: <Home /> },
+  { path: '/my-registrations', icon: <User /> },
+  { path: '/create-event', icon: <Plus /> },
+  { path: '/manage-events', icon: <Calendar /> },
+];
+
+function Navigation() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { hapticFeedback } = useTelegram();
 
   const handleNavClick = (path) => {
-    hapticFeedback('light');
     navigate(path);
   };
 
-  const navItems = [
-    {
-      path: '/',
-      icon: Home,
-      label: 'Главная',
-      show: true
-    },
-    {
-      path: '/events',
-      icon: Calendar,
-      label: 'События',
-      show: true
-    },
-    {
-      path: '/my-registrations',
-      icon: FileText,
-      label: 'Мои заявки',
-      show: user?.role === 'volunteer'
-    },
-    {
-      path: '/create-event',
-      icon: Plus,
-      label: 'Создать',
-      show: user?.role === 'organizer' || user?.role === 'admin'
-    },
-    {
-  path: '/profile',
-  icon: User,
-  label: 'Профиль',
-  show: true
-    }
-].filter(item => item.show);
-return (
-<nav className="bottom-nav">
-{navItems.map(({ path, icon: Icon, label }) => (
-<button
-key={path}
-className={nav-item ${location.pathname === path ? 'active' : ''}}
-onClick={() => handleNavClick(path)}
->
-<Icon className="nav-icon" size={20} />
-<span>{label}</span>
-</button>
-))}
-</nav>
-);
-};
+  return (
+    <nav className="nav-bar">
+      {navItems.map(({ path, icon }) => (
+        <button
+          key={path}
+          className={`nav-item ${location.pathname === path ? 'active' : ''}`}
+          onClick={() => handleNavClick(path)}
+        >
+          {icon}
+        </button>
+      ))}
+    </nav>
+  );
+}
+
 export default Navigation;
