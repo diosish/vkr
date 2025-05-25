@@ -11,15 +11,16 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from pathlib import Path
 
-from backend.database import init_db, get_db
-from backend.config import ALLOWED_ORIGINS, WEBAPP_URL, TELEGRAM_BOT_TOKEN
-from backend.models.user import User, UserRole
-from backend.models.volunteer_profile import VolunteerProfile
-from backend.models.event import Event, EventStatus, EventCategory
-from backend.models.registration import Registration, RegistrationStatus
+# Исправленные импорты - используем относительные пути
+from database import init_db, get_db
+from config import ALLOWED_ORIGINS, WEBAPP_URL, TELEGRAM_BOT_TOKEN
+from models.user import User, UserRole
+from models.volunteer_profile import VolunteerProfile
+from models.event import Event, EventStatus, EventCategory
+from models.registration import Registration, RegistrationStatus
 
 # Путь к собранному фронтенду
-FRONTEND_BUILD = Path("frontend/build")
+FRONTEND_BUILD = Path("../frontend/build")
 
 # Lifecycle событие
 @asynccontextmanager

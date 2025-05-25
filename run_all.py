@@ -19,7 +19,6 @@ from dotenv import load_dotenv
 load_dotenv()
 npm_path = r"C:\Program Files\nodejs\npm.cmd"
 
-
 # Глобальные процессы для управления
 processes = []
 build_mode = False
@@ -106,9 +105,9 @@ def install_dependencies():
     try:
         # Backend зависимости
         print("  📦 Backend зависимости...")
-        if Path("backend/requirements.txt").exists():
+        if Path("requirements.txt").exists():
             subprocess.run([
-                sys.executable, "-m", "pip", "install", "-r", "backend/requirements.txt"
+                sys.executable, "-m", "pip", "install", "-r", "requirements.txt"
             ], check=True, capture_output=True)
             print("    ✅ Python зависимости установлены")
 
@@ -163,7 +162,7 @@ def build_frontend():
         # Собираем
         print("    🔨 Сборка фронтенда... (это может занять минуту)")
         result = subprocess.run([
-            "npm", "run", "build"
+            npm_path, "run", "build"
         ], capture_output=True, text=True)
 
         if result.returncode != 0:
@@ -194,12 +193,13 @@ def run_backend():
     print("🌐 Запуск backend сервера...")
 
     try:
-        os.chdir("backend")
+        # Запускаем сервер из корневой папки с правильным PYTHONPATH
+        env = os.environ.copy()
+        env['PYTHONPATH'] = str(Path('.').absolute())
 
-        # Запускаем сервер
         process = subprocess.Popen([
-            sys.executable, "main.py"
-        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+            sys.executable, "-m", "backend.main"
+        ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
 
         processes.append(("Backend", process))
 
@@ -212,7 +212,6 @@ def run_backend():
         thread = threading.Thread(target=read_output, daemon=True)
         thread.start()
 
-        os.chdir("..")
         return process
 
     except Exception as e:
@@ -263,7 +262,7 @@ def run_frontend_dev():
         env['BROWSER'] = 'none'  # Не открываем браузер автоматически
 
         process = subprocess.Popen([
-            "npm", "start"
+            npm_path, "start"
         ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env)
 
         processes.append(("Frontend", process))
