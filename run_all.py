@@ -196,25 +196,42 @@ def run_backend():
         # Запускаем сервер через uvicorn с правильным путем к модулю
         env = os.environ.copy()
         env['PYTHONPATH'] = str(Path('.').absolute())
+        env['UVICORN_LOG_LEVEL'] = 'debug'  # Включаем подробное логирование
 
         print(f"    🔧 PYTHONPATH: {env['PYTHONPATH']}")
 
+        # Создаем процесс с перенаправлением вывода
         process = subprocess.Popen([
             sys.executable, "-m", "uvicorn", "backend.main:app",
-            "--host", "0.0.0.0", "--port", "8000", "--reload"
+            "--host", "127.0.0.1",  # Используем localhost вместо 0.0.0.0
+            "--port", "8000",
+            "--reload",
+            "--log-level", "debug"
         ], stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1, env=env, cwd=Path('.').absolute())
 
         processes.append(("Backend", process))
 
         # Читаем вывод в отдельном потоке
         def read_output():
-            for line in iter(process.stdout.readline, ''):
-                if line.strip():  # Не показываем пустые строки
-                    print(f"[BACKEND] {line.rstrip()}")
+            while True:
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+                if line.strip():
+                    print(f"[BACKEND] {line.strip()}")
 
         thread = threading.Thread(target=read_output, daemon=True)
         thread.start()
 
+        # Даем серверу время на запуск
+        time.sleep(2)
+
+        # Проверяем, что процесс все еще работает
+        if process.poll() is not None:
+            print("❌ Backend процесс завершился сразу после запуска")
+            return None
+
+        print("✅ Backend процесс запущен")
         return process
 
     except Exception as e:
@@ -319,29 +336,58 @@ def signal_handler(signum, frame):
 
 
 def wait_for_backend():
-    """Ожидание запуска backend"""
+    """Ожидание запуска backend сервера"""
     print("⏳ Ожидание запуска backend сервера...")
-
-    import requests
-
-    for attempt in range(30):  # 30 секунд максимум
+    
+    start_time = time.time()
+    max_wait = 30  # максимальное время ожидания в секундах
+    check_interval = 1  # интервал проверки в секундах
+    
+    while time.time() - start_time < max_wait:
         try:
-            response = requests.get("http://localhost:8000/health", timeout=2)
-            if response.status_code == 200:
-                data = response.json()
-                print("✅ Backend сервер запущен!")
-                print(f"    📊 Статус: {data.get('status')}")
-                print(f"    🌐 WebApp URL: {data.get('webapp_url')}")
-                print(f"    📁 Frontend: {'✅' if data.get('frontend') else '❌'}")
-                return True
-        except:
-            pass
-
-        time.sleep(1)
-        if attempt % 5 == 0:  # Показываем прогресс каждые 5 секунд
-            print(f"    ⏳ Попытка {attempt + 1}/30...")
-
+            # Проверяем, что процесс backend все еще работает
+            for name, process in processes:
+                if name == "Backend":
+                    if process.poll() is not None:
+                        print("❌ Backend сервер остановился")
+                        return False
+            
+            # Проверяем доступность сервера
+            import requests
+            try:
+                # Пробуем разные эндпоинты
+                endpoints = [
+                    "http://127.0.0.1:8000/health",
+                    "http://127.0.0.1:8000/api/ping",
+                    "http://127.0.0.1:8000"
+                ]
+                
+                for endpoint in endpoints:
+                    try:
+                        print(f"Проверка {endpoint}...")
+                        response = requests.get(endpoint, timeout=1)
+                        if response.status_code == 200:
+                            print(f"✅ Backend сервер успешно запущен (проверка через {endpoint})")
+                            return True
+                    except requests.RequestException as e:
+                        print(f"⚠️ Ошибка при проверке {endpoint}: {e}")
+                        continue
+                
+            except Exception as e:
+                print(f"⚠️ Ошибка при проверке сервера: {e}")
+            
+            # Ждем перед следующей проверкой
+            time.sleep(check_interval)
+            
+        except Exception as e:
+            print(f"❌ Ошибка при проверке backend: {e}")
+            return False
+    
     print("❌ Backend сервер не запустился в течение 30 секунд")
+    print("Проверьте:")
+    print("1. Нет ли ошибок в логах сервера")
+    print("2. Не занят ли порт 8000 другим процессом")
+    print("3. Доступен ли сервер по адресу http://127.0.0.1:8000")
     return False
 
 

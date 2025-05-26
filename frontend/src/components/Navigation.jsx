@@ -1,10 +1,12 @@
 import React from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Home, Calendar, User, FileText, Plus } from 'lucide-react';
+import { useAuth } from '../contexts/AuthContext';
 
-const Navigation = ({ user }) => {
+const Navigation = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { user } = useAuth();
 
   // Определяем навигационные элементы в зависимости от роли
   const getNavItems = () => {
@@ -32,6 +34,14 @@ const Navigation = ({ user }) => {
         path: '/manage-events',
         icon: FileText,
         label: 'Мои события'
+      });
+    }
+
+    if (user?.role === 'admin') {
+      baseItems.push({
+        path: '/admin',
+        icon: FileText,
+        label: 'Админ'
       });
     }
 

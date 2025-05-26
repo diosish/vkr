@@ -1,10 +1,19 @@
 import React from 'react';
 import Navigation from './Navigation';
+import { useAuth } from '../contexts/AuthContext';
+import LoadingSpinner from './LoadingSpinner';
 
-const Layout = ({ user, children }) => {
+const Layout = ({ children }) => {
+  const { user, loading } = useAuth();
+
+  if (loading) {
+    return <LoadingSpinner message="Загрузка..." />;
+  }
+
   let title = 'Волонтеры';
   if (user?.role === 'organizer') title = 'Организатор';
   if (user?.role === 'admin') title = 'Администратор';
+
   return (
     <div className="layout">
       <header className="header">
@@ -20,7 +29,7 @@ const Layout = ({ user, children }) => {
         {children}
       </main>
 
-      <Navigation user={user} />
+      {user && <Navigation />}
     </div>
   );
 };

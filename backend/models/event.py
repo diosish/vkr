@@ -1,7 +1,7 @@
 """Упрощенная модель мероприятия"""
 
 from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, JSON, Enum as SAEnum
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, backref
 from datetime import datetime
 from backend.database import Base
 from backend.models.user import User
@@ -90,7 +90,7 @@ class Event(Base):
     published_at = Column(DateTime)
 
     # Связи
-    creator = relationship("User", backref="created_events")
+    creator = relationship("User", backref=backref("created_events", cascade="all, delete-orphan"))
     logs = relationship("EventLog", back_populates="event", cascade="all, delete-orphan")
 
     @property

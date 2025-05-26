@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Edit, Trash2, User, Building } from 'lucide-react';
 import useTelegram from '../hooks/useTelegram';
+import { EVENT_STATUS, apiRequest } from '../services/api';
 
 const AdminPanelPage = () => {
   const [users, setUsers] = useState([]);
@@ -184,6 +185,18 @@ const AdminPanelPage = () => {
     }
   };
 
+  const handleChangeStatus = async (eventId, newStatus) => {
+    try {
+      await apiRequest(`/events/${eventId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      loadEvents();
+    } catch (e) {
+      alert('Ошибка смены статуса: ' + (e.message || e));
+    }
+  };
+
   if (loading) return <div>Загрузка...</div>;
   if (error) return <div>Ошибка: {error}</div>;
 
@@ -324,7 +337,17 @@ const AdminPanelPage = () => {
                   <td>{event.id}</td>
                   <td>{event.title}</td>
                   <td>{event.category}</td>
-                  <td>{event.status}</td>
+                  <td>
+                    <select
+                      value={event.status}
+                      onChange={e => handleChangeStatus(event.id, e.target.value)}
+                    >
+                      <option value={EVENT_STATUS.DRAFT}>Черновик</option>
+                      <option value={EVENT_STATUS.PUBLISHED}>Опубликовано</option>
+                      <option value={EVENT_STATUS.CANCELLED}>Отменено</option>
+                      <option value={EVENT_STATUS.COMPLETED}>Завершено</option>
+                    </select>
+                  </td>
                   <td>{event.start_date && new Date(event.start_date).toLocaleString()}</td>
                   <td>{event.end_date && new Date(event.end_date).toLocaleString()}</td>
                   <td>

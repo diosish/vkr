@@ -7,6 +7,7 @@ from datetime import datetime
 from fastapi.responses import StreamingResponse
 import csv
 from io import StringIO
+import logging
 
 from backend.database import get_db
 from backend.api.auth import get_current_user
@@ -16,6 +17,7 @@ from backend.models.registration import Registration, RegistrationStatus
 from backend.services.event_service import notify_volunteers_on_new_event, notify_organizer_on_full
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 class EventCreateRequest(BaseModel):
@@ -384,7 +386,10 @@ async def create_event(
         db: Session = Depends(get_db)
 ):
     """Создать новое мероприятие (только для организаторов и админов)"""
+    logger.info(f"Попытка создания мероприятия пользователем {current_user.id} (роль: {current_user.role})")
+    
     if not (current_user.role == UserRole.ORGANIZER or current_user.role == UserRole.ADMIN):
+        logger.warning(f"Отказано в доступе: пользователь {current_user.id} не является организатором или админом")
         raise HTTPException(
             status_code=403,
             detail="Only organizers and admins can create events"
@@ -392,70 +397,85 @@ async def create_event(
 
     # Валидация дат
     if event_data.start_date >= event_data.end_date:
+        logger.warning(f"Некорректные даты: start_date={event_data.start_date}, end_date={event_data.end_date}")
         raise HTTPException(
             status_code=400,
             detail="End date must be after start date"
         )
 
     if event_data.registration_deadline and event_data.registration_deadline >= event_data.start_date:
+        logger.warning(f"Некорректная дата регистрации: deadline={event_data.registration_deadline}, start_date={event_data.start_date}")
         raise HTTPException(
             status_code=400,
             detail="Registration deadline must be before event start date"
         )
 
-    # Создание мероприятия
-    event = Event(
-        creator_id=current_user.id,
-        **event_data.dict()
-    )
+    try:
+        # Создание мероприятия
+        logger.info(f"Создание мероприятия с данными: {event_data.dict()}")
+        event = Event(
+            creator_id=current_user.id,
+            status=EventStatus.DRAFT,  # Устанавливаем начальный статус
+            **event_data.dict()
+        )
 
-    db.add(event)
-    db.commit()
-    db.refresh(event)
-    await log_event_action(db, event.id, current_user.id, EventActionType.CREATE)
+        db.add(event)
+        db.commit()
+        db.refresh(event)
+        logger.info(f"Мероприятие успешно создано с ID: {event.id}")
+        
+        await log_event_action(db, event.id, current_user.id, EventActionType.CREATE)
 
-    event_data = {
-        "id": event.id,
-        "title": event.title,
-        "description": event.description,
-        "short_description": event.short_description,
-        "category": event.category.value,
-        "tags": event.tags or [],
-        "location": event.location,
-        "address": event.address,
-        "start_date": event.start_date,
-        "end_date": event.end_date,
-        "registration_deadline": event.registration_deadline,
-        "max_volunteers": event.max_volunteers,
-        "min_volunteers": event.min_volunteers,
-        "current_volunteers_count": 0,
-        "available_slots": event.available_slots if hasattr(event, 'available_slots') else 0,
-        "progress_percentage": event.progress_percentage if hasattr(event, 'progress_percentage') else 0,
-        "required_skills": event.required_skills or [],
-        "preferred_skills": event.preferred_skills or [],
-        "min_age": event.min_age,
-        "max_age": event.max_age,
-        "requirements_description": event.requirements_description,
-        "what_to_bring": event.what_to_bring,
-        "dress_code": event.dress_code,
-        "meal_provided": event.meal_provided if event.meal_provided is not None else False,
-        "transport_provided": event.transport_provided if event.transport_provided is not None else False,
-        "contact_person": event.contact_person,
-        "contact_phone": event.contact_phone,
-        "contact_email": event.contact_email,
-        "status": event.status.value,
-        "is_featured": event.is_featured if hasattr(event, 'is_featured') else False,
-        "views_count": event.views_count if hasattr(event, 'views_count') else 0,
-        "creator_name": current_user.full_name,
-        "created_at": event.created_at,
-        "updated_at": event.updated_at,
-        "can_register": False,
-        "user_registration_status": None,
-        "total_registrations": 0,
-        "approved_registrations": 0,
-        "pending_registrations": 0,
-    }
-    return EventResponse(**event_data)
+        event_data = {
+            "id": event.id,
+            "title": event.title,
+            "description": event.description,
+            "short_description": event.short_description,
+            "category": event.category.value,
+            "tags": event.tags or [],
+            "location": event.location,
+            "address": event.address,
+            "start_date": event.start_date,
+            "end_date": event.end_date,
+            "registration_deadline": event.registration_deadline,
+            "max_volunteers": event.max_volunteers,
+            "min_volunteers": event.min_volunteers,
+            "current_volunteers_count": 0,
+            "available_slots": event.available_slots if hasattr(event, 'available_slots') else 0,
+            "progress_percentage": event.progress_percentage if hasattr(event, 'progress_percentage') else 0,
+            "required_skills": event.required_skills or [],
+            "preferred_skills": event.preferred_skills or [],
+            "min_age": event.min_age,
+            "max_age": event.max_age,
+            "requirements_description": event.requirements_description,
+            "what_to_bring": event.what_to_bring,
+            "dress_code": event.dress_code,
+            "meal_provided": event.meal_provided if event.meal_provided is not None else False,
+            "transport_provided": event.transport_provided if event.transport_provided is not None else False,
+            "contact_person": event.contact_person,
+            "contact_phone": event.contact_phone,
+            "contact_email": event.contact_email,
+            "status": event.status.value,
+            "is_featured": event.is_featured if hasattr(event, 'is_featured') else False,
+            "views_count": event.views_count if hasattr(event, 'views_count') else 0,
+            "creator_name": current_user.full_name,
+            "created_at": event.created_at,
+            "updated_at": event.updated_at,
+            "can_register": False,
+            "user_registration_status": None,
+            "total_registrations": 0,
+            "approved_registrations": 0,
+            "pending_registrations": 0,
+        }
+        logger.info(f"Мероприятие успешно создано и возвращено: {event_data}")
+        return EventResponse(**event_data)
+    except Exception as e:
+        logger.error(f"Ошибка при создании мероприятия: {str(e)}")
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to create event: {str(e)}"
+        )
 
 
 @router.put("/{event_id}", response_model=EventResponse)
@@ -465,46 +485,26 @@ async def update_event(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """Обновить мероприятие"""
-
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+    
+    # Проверяем, является ли пользователь создателем мероприятия
+    if event.creator_id != current_user.id and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="У вас нет прав на редактирование этого мероприятия")
 
-    # Проверка прав доступа
-    if not (current_user.is_admin() or event.creator_id == current_user.id):
-        raise HTTPException(
-            status_code=403,
-            detail="You can only edit your own events"
-        )
-
-    # Обновление полей
-    update_data = event_data.dict(exclude_unset=True)
-
-    # Валидация дат если они обновляются
-    start_date = update_data.get('start_date', event.start_date)
-    end_date = update_data.get('end_date', event.end_date)
-
-    if start_date >= end_date:
-        raise HTTPException(
-            status_code=400,
-            detail="End date must be after start date"
-        )
-
-    for field, value in update_data.items():
+    # Обновляем поля мероприятия
+    for field, value in event_data.dict(exclude_unset=True).items():
         setattr(event, field, value)
 
     event.updated_at = datetime.utcnow()
-
-    # Если меняем статус на опубликованный
-    if update_data.get('status') == EventStatus.PUBLISHED and not event.published_at:
-        event.published_at = datetime.utcnow()
-
     db.commit()
     db.refresh(event)
+
+    # Логируем действие
     await log_event_action(db, event.id, current_user.id, EventActionType.UPDATE)
 
-    return EventResponse(**event.__dict__)
+    return event
 
 
 @router.delete("/{event_id}", response_model=EventResponse)
@@ -513,25 +513,23 @@ async def delete_event(
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
-    """Мягкое удаление (отмена) мероприятия: организатор — только свои, админ — любые. Возвращает обновлённое событие."""
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    if current_user.role == UserRole.ADMIN:
-        pass  # админ может удалять любые
-    elif current_user.role == UserRole.ORGANIZER:
-        if event.creator_id != current_user.id:
-            raise HTTPException(status_code=403, detail="Organizers can only delete their own events")
-    else:
-        raise HTTPException(status_code=403, detail="Only organizers and admins can delete events")
-    # Мягкое удаление - меняем статус
-    event.status = EventStatus.CANCELLED
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+
+    # Проверяем, является ли пользователь создателем мероприятия
+    if event.creator_id != current_user.id and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="У вас нет прав на удаление этого мероприятия")
+
+    event.status = EventStatus.DELETED
     event.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(event)
-    await log_event_action(db, event.id, current_user.id, EventActionType.CANCEL)
-    # Возвращаем обновлённое событие (с актуальной статистикой)
-    return await get_event(event_id, current_user, db)
+
+    # Логируем действие
+    await log_event_action(db, event.id, current_user.id, EventActionType.DELETE)
+
+    return event
 
 
 @router.get("/my/created", response_model=List[EventResponse])
@@ -541,17 +539,32 @@ async def get_my_events(
         db: Session = Depends(get_db)
 ):
     """Получить мероприятия созданные пользователем (с фильтрацией по статусу)"""
+    print(f"DEBUG: Запрос списка созданных мероприятий от пользователя {current_user.id} (роль: {current_user.role})")
 
     if not current_user.is_organizer():
+        print(f"DEBUG: Отказано в доступе: пользователь {current_user.id} не является организатором")
         raise HTTPException(
             status_code=403,
             detail="Only organizers can view created events"
         )
 
+    # Базовый запрос - все события пользователя
     query = db.query(Event).filter(Event.creator_id == current_user.id)
-    if status:
+    print(f"DEBUG: Базовый запрос для пользователя {current_user.id}")
+    
+    # Если статус не указан, показываем все события, кроме удаленных
+    if not status:
+        query = query.filter(Event.status != EventStatus.CANCELLED)
+        print("DEBUG: Фильтр: все события, кроме удаленных")
+    else:
         query = query.filter(Event.status == status)
+        print(f"DEBUG: Фильтр по статусу: {status}")
+        
     events = query.order_by(Event.created_at.desc()).all()
+    print(f"DEBUG: Найдено {len(events)} мероприятий")
+    
+    for event in events:
+        print(f"DEBUG: Мероприятие {event.id}: {event.title} (статус: {event.status.value}, создатель: {event.creator_id})")
 
     result = []
     for event in events:
@@ -587,17 +600,19 @@ async def get_my_events(
             "status": event.status.value,
             "is_featured": event.is_featured if hasattr(event, 'is_featured') else False,
             "views_count": event.views_count if hasattr(event, 'views_count') else 0,
-            "creator_name": current_user.full_name,
+            "creator_name": event.creator.full_name if event.creator else "Неизвестно",
             "created_at": event.created_at,
             "updated_at": event.updated_at,
-            "can_register": False,
+            "can_register": event.can_register(current_user) if hasattr(event, 'can_register') else False,
             "user_registration_status": None,
             "total_registrations": 0,
             "approved_registrations": 0,
             "pending_registrations": 0,
         }
         result.append(EventResponse(**event_data))
+        print(f"DEBUG: Добавлено мероприятие в результат: {event.id} - {event.title}")
 
+    print(f"DEBUG: Возвращаем {len(result)} мероприятий")
     return result
 
 
@@ -635,24 +650,26 @@ async def update_event_status(
 ):
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
-        raise HTTPException(status_code=404, detail="Event not found")
-    if not (current_user.is_admin() or event.creator_id == current_user.id):
-        raise HTTPException(status_code=403, detail="Нет доступа")
-    # Проверяем допустимость нового статуса
+        raise HTTPException(status_code=404, detail="Мероприятие не найдено")
+
+    # Проверяем, является ли пользователь создателем мероприятия
+    if event.creator_id != current_user.id and current_user.role != UserRole.ADMIN:
+        raise HTTPException(status_code=403, detail="У вас нет прав на изменение статуса этого мероприятия")
+
     try:
         new_status = EventStatus(data.status)
-    except Exception:
-        raise HTTPException(status_code=400, detail="Некорректный статус")
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Недопустимый статус мероприятия")
+
     event.status = new_status
-    if new_status == EventStatus.PUBLISHED and not event.published_at:
-        event.published_at = datetime.utcnow()
     event.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(event)
-    await log_event_action(db, event.id, current_user.id, EventActionType.PUBLISH if new_status == EventStatus.PUBLISHED else EventActionType.UPDATE, f"status={new_status.value}")
-    if new_status == EventStatus.PUBLISHED:
-        notify_volunteers_on_new_event(db, event)
-    return await get_event(event_id, current_user, db)
+
+    # Логируем действие
+    await log_event_action(db, event.id, current_user.id, EventActionType.STATUS_CHANGE, f"Статус изменен на {new_status}")
+
+    return event
 
 
 @router.post("/{event_id}/restore", response_model=EventResponse)

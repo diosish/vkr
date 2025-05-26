@@ -1,16 +1,11 @@
 import React from 'react';
 import { Calendar, MapPin, Users, Clock } from 'lucide-react';
+import { Card, Button } from 'react-bootstrap';
+import { useNavigate } from 'react-router-dom';
+import { formatDate, formatDateShort } from '../services/api';
 
 const EventCard = ({ event, onClick, compact = false, showCategory = false, user }) => {
-  const formatDate = (dateString) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('ru-RU', {
-      day: 'numeric',
-      month: 'short',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
-  };
+  const navigate = useNavigate();
 
   const getCategoryIcon = (category) => {
     const icons = {
@@ -55,101 +50,67 @@ const EventCard = ({ event, onClick, compact = false, showCategory = false, user
     return null;
   };
 
+  const handleClick = () => {
+    if (onClick) {
+      onClick();
+    } else {
+      navigate(`/events/${event.id}`);
+    }
+  };
+
   return (
-    <div
-      className={`event-card ${compact ? 'compact' : ''}`}
-      onClick={onClick}
-      style={{ cursor: 'pointer' }}
-    >
-      {/* Header */}
-      <div className="event-header" style={{ marginBottom: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div style={{ flex: 1 }}>
-            <h3 className="mb-1" style={{ fontSize: compact ? '16px' : '18px' }}>
-              {event.title}
-            </h3>
-            {showCategory && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '8px' }}>
-                <span>{getCategoryIcon(event.category)}</span>
-                <span className="font-small text-muted">{getCategoryLabel(event.category)}</span>
-              </div>
-            )}
-          </div>
-          {getStatusBadge()}
-        </div>
-      </div>
-
-      {/* Description */}
-      {!compact && event.short_description && (
-        <p className="text-muted mb-3" style={{ fontSize: '14px', lineHeight: '1.4' }}>
-          {event.short_description}
-        </p>
-      )}
-
-      {/* Event Details */}
-      <div className="event-details" style={{ marginBottom: '12px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-          <Calendar size={16} className="text-muted" />
-          <span className="font-small text-muted">
-            {formatDate(event.start_date)}
-          </span>
-        </div>
-
-        {event.location && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '6px' }}>
-            <MapPin size={16} className="text-muted" />
-            <span className="font-small text-muted">{event.location}</span>
-          </div>
+    <Card className="mb-3" style={{ cursor: 'pointer' }} onClick={handleClick}>
+      <Card.Header className="d-flex justify-content-between align-items-center">
+        <h5 className="mb-0">{event.title}</h5>
+        <span className={`badge bg-${getStatusColor(event.status)}`}>
+          {getStatusText(event.status)}
+        </span>
+      </Card.Header>
+      <Card.Body>
+        <Card.Text>
+          <strong>Место:</strong> {event.location}<br/>
+          <strong>Дата начала:</strong> {formatDate(event.start_date)}<br/>
+          <strong>Дата окончания:</strong> {formatDate(event.end_date)}<br/>
+          <strong>Волонтеры:</strong> {event.current_volunteers_count}/{event.max_volunteers}
+        </Card.Text>
+        {event.short_description && (
+          <Card.Text className="text-muted">
+            {event.short_description}
+          </Card.Text>
         )}
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Users size={16} className="text-muted" />
-          <span className="font-small text-muted">
-            {event.current_volunteers_count}
-            {event.max_volunteers > 0 && ` / ${event.max_volunteers}`} волонтеров
-          </span>
-        </div>
-      </div>
-
-      {/* Progress Bar */}
-      {event.max_volunteers > 0 && (
-        <div className="progress-section mb-3">
-          <div style={{
-            width: '100%',
-            height: '6px',
-            backgroundColor: 'var(--tg-secondary-bg-color)',
-            borderRadius: '3px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              width: `${event.progress_percentage}%`,
-              height: '100%',
-              backgroundColor: event.progress_percentage >= 100 ? '#dc3545' : 'var(--tg-button-color)',
-              transition: 'width 0.3s ease'
-            }} />
-          </div>
-          <div className="font-small text-muted mt-1">
-            {event.progress_percentage}% заполнено
-          </div>
-        </div>
-      )}
-
-      {/* Footer */}
-      <div className="event-meta">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <span className="font-small text-muted">
-            Организатор: {event.creator_name}
-          </span>
-
-          {event.can_register && user?.role === 'volunteer' && !event.user_registration_status && (
-            <span className="font-small text-primary">
-              Можно записаться →
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
+      </Card.Body>
+    </Card>
   );
+};
+
+const getStatusColor = (status) => {
+  switch (status) {
+    case 'draft':
+      return 'secondary';
+    case 'published':
+      return 'success';
+    case 'cancelled':
+      return 'danger';
+    case 'completed':
+      return 'info';
+    default:
+      return 'secondary';
+  }
+};
+
+const getStatusText = (status) => {
+  switch (status) {
+    case 'draft':
+      return 'Черновик';
+    case 'published':
+      return 'Опубликовано';
+    case 'cancelled':
+      return 'Отменено';
+    case 'completed':
+      return 'Завершено';
+    default:
+      return status;
+  }
 };
 
 export default EventCard;

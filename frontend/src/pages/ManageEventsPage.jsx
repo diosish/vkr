@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { getMyEvents, publishEvent } from '../services/api';
+import { getMyEvents, publishEvent, EVENT_STATUS, apiRequest } from '../services/api';
 import EventCard from '../components/EventCard';
 import LoadingSpinner from '../components/LoadingSpinner';
 
@@ -24,10 +24,7 @@ const ManageEventsPage = ({ user }) => {
   const loadEvents = async () => {
     setLoading(true);
     try {
-      let url = '/events/my/created';
-      if (status !== 'all') url += `?status=${status}`;
-      const res = await fetch(url, { headers: { 'Content-Type': 'application/json' } });
-      const data = await res.json();
+      const data = await getMyEvents();
       setEvents(data);
     } catch (e) {
       setEvents([]);
@@ -45,6 +42,18 @@ const ManageEventsPage = ({ user }) => {
       alert('Ошибка публикации: ' + (e.message || e));
     } finally {
       setPublishing(null);
+    }
+  };
+
+  const handleChangeStatus = async (eventId, newStatus) => {
+    try {
+      await apiRequest(`/events/${eventId}/status`, {
+        method: 'PATCH',
+        body: JSON.stringify({ status: newStatus }),
+      });
+      await loadEvents();
+    } catch (e) {
+      alert('Ошибка смены статуса: ' + (e.message || e));
     }
   };
 
@@ -73,15 +82,27 @@ const ManageEventsPage = ({ user }) => {
           {events.map(event => (
             <div key={event.id} className="mb-3">
               <EventCard event={event} user={user}>
-                {event.status === 'draft' && (
-                  <button
-                    className="btn btn-success btn-small mt-2"
-                    disabled={publishing === event.id}
-                    onClick={() => handlePublish(event.id)}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {event.status === 'draft' && (
+                    <button
+                      className="btn btn-success btn-small mt-2"
+                      disabled={publishing === event.id}
+                      onClick={() => handlePublish(event.id)}
+                    >
+                      {publishing === event.id ? 'Публикация...' : 'Опубликовать'}
+                    </button>
+                  )}
+                  <select
+                    value={event.status}
+                    onChange={e => handleChangeStatus(event.id, e.target.value)}
+                    style={{ marginLeft: 8 }}
                   >
-                    {publishing === event.id ? 'Публикация...' : 'Опубликовать'}
-                  </button>
-                )}
+                    <option value={EVENT_STATUS.DRAFT}>Черновик</option>
+                    <option value={EVENT_STATUS.PUBLISHED}>Опубликовано</option>
+                    <option value={EVENT_STATUS.CANCELLED}>Отменено</option>
+                    <option value={EVENT_STATUS.COMPLETED}>Завершено</option>
+                  </select>
+                </div>
               </EventCard>
             </div>
           ))}

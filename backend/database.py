@@ -1,12 +1,14 @@
 """Подключение к базе данных с улучшенной конфигурацией"""
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 from backend.config import DATABASE_URL
 from backend.core.logging import get_logger
 import os
+from contextlib import contextmanager
+from typing import Generator
 
 logger = get_logger(__name__)
 
@@ -65,7 +67,7 @@ SessionLocal = sessionmaker(
 # Базовый класс для моделей
 Base = declarative_base()
 
-def get_db():
+def get_db() -> Generator:
     """Получить сессию БД с proper error handling"""
     db = SessionLocal()
     try:
@@ -77,11 +79,30 @@ def get_db():
     finally:
         db.close()
 
+@contextmanager
+def get_db_context():
+    """Контекстный менеджер для работы с сессией базы данных"""
+    db = SessionLocal()
+    try:
+        yield db
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise e
+    finally:
+        db.close()
+
 def init_db():
     """Инициализация базы данных (создание таблиц)"""
     logger.info("🗄️ Инициализация базы данных...")
 
     try:
+        # Проверяем подключение
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            conn.commit()
+        logger.info("✅ База данных инициализирована")
+
         # Импортируем все модели для создания таблиц
         logger.info("📦 Импорт моделей...")
         from backend.models.user import User, UserRole
@@ -208,10 +229,9 @@ def create_initial_data():
 def check_db_connection():
     """Проверка подключения к БД"""
     try:
-        db = SessionLocal()
-        # Простой запрос для проверки соединения
-        db.execute("SELECT 1")
-        db.close()
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+            conn.commit()
         logger.info("✅ Подключение к БД успешно")
         return True
     except Exception as e:

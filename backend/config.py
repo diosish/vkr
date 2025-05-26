@@ -70,20 +70,33 @@ if IS_DEVELOPMENT:
         "http://127.0.0.1:8000",
     ])
 
-# Добавляем WEBAPP_URL если указан
+# Добавляем WEBAPP_URL если указан и это не дефолтное значение
 if WEBAPP_URL and WEBAPP_URL != "https://your-ngrok-url.ngrok-free.app":
     ALLOWED_ORIGINS.append(WEBAPP_URL)
 
-# Telegram Web App домены
+# Telegram Web App домены (только официальные)
 ALLOWED_ORIGINS.extend([
     "https://web.telegram.org",
     "https://k.web.telegram.org"
 ])
 
-# Дополнительные origins из переменных окружения
-additional_origins = os.getenv("ALLOWED_ORIGINS", "")
-if additional_origins:
-    ALLOWED_ORIGINS.extend([origin.strip() for origin in additional_origins.split(",")])
+# Дополнительные origins из переменных окружения (только для production)
+if IS_PRODUCTION:
+    additional_origins = os.getenv("ALLOWED_ORIGINS", "")
+    if additional_origins:
+        ALLOWED_ORIGINS.extend([origin.strip() for origin in additional_origins.split(",")])
+
+# Список разрешенных методов
+ALLOWED_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+
+# Список разрешенных заголовков
+ALLOWED_HEADERS = [
+    "Content-Type",
+    "Authorization",
+    "X-Requested-With",
+    "X-Telegram-Init-Data",
+    "X-Request-ID"
+]
 
 # === ЛОГИРОВАНИЕ ===
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO" if IS_PRODUCTION else "DEBUG")
@@ -129,6 +142,51 @@ APP_DESCRIPTION = "Система регистрации волонтеров д
 API_RATE_LIMIT = os.getenv("API_RATE_LIMIT", "100")  # запросов в минуту
 API_BURST_LIMIT = os.getenv("API_BURST_LIMIT", "200")
 
+# URL бота для уведомлений
+BOT_NOTIFY_URL = os.getenv("BOT_NOTIFY_URL", "http://localhost:8081/bot/notify")
+
+class Settings:
+    """Класс для хранения настроек приложения"""
+    def __init__(self):
+        self.APP_NAME = APP_NAME
+        self.APP_VERSION = APP_VERSION
+        self.APP_DESCRIPTION = APP_DESCRIPTION
+        self.API_RATE_LIMIT = API_RATE_LIMIT
+        self.API_BURST_LIMIT = API_BURST_LIMIT
+        self.BOT_NOTIFY_URL = BOT_NOTIFY_URL
+        self.DATABASE_URL = DATABASE_URL
+        self.SECRET_KEY = SECRET_KEY
+        self.JWT_ALGORITHM = JWT_ALGORITHM
+        self.JWT_EXPIRE_MINUTES = JWT_EXPIRE_MINUTES
+        self.ENVIRONMENT = ENVIRONMENT
+        self.IS_DEVELOPMENT = IS_DEVELOPMENT
+        self.IS_PRODUCTION = IS_PRODUCTION
+        self.IS_TESTING = IS_TESTING
+        self.ALLOWED_ORIGINS = ALLOWED_ORIGINS
+        self.ALLOWED_METHODS = ALLOWED_METHODS
+        self.ALLOWED_HEADERS = ALLOWED_HEADERS
+        self.LOG_LEVEL = LOG_LEVEL
+        self.LOG_TO_FILE = LOG_TO_FILE
+        self.LOG_JSON_FORMAT = LOG_JSON_FORMAT
+        self.ENABLE_NOTIFICATIONS = ENABLE_NOTIFICATIONS
+        self.NOTIFICATION_CHANNELS = NOTIFICATION_CHANNELS
+        self.MEDIA_ROOT = MEDIA_ROOT
+        self.MEDIA_URL = MEDIA_URL
+        self.MAX_UPLOAD_SIZE = MAX_UPLOAD_SIZE
+        self.REDIS_URL = REDIS_URL
+        self.ENABLE_REDIS = ENABLE_REDIS
+        self.EMAIL_HOST = EMAIL_HOST
+        self.EMAIL_PORT = EMAIL_PORT
+        self.EMAIL_USER = EMAIL_USER
+        self.EMAIL_PASSWORD = EMAIL_PASSWORD
+        self.EMAIL_USE_TLS = EMAIL_USE_TLS
+        self.FROM_EMAIL = FROM_EMAIL
+        self.SENTRY_DSN = SENTRY_DSN
+        self.ENABLE_METRICS = ENABLE_METRICS
+
+# Создаем экземпляр настроек
+settings = Settings()
+
 # === ФУНКЦИИ КОНФИГУРАЦИИ ===
 
 def get_database_config():
@@ -145,14 +203,16 @@ def get_cors_config():
     return {
         "allow_origins": ALLOWED_ORIGINS,
         "allow_credentials": True,
-        "allow_methods": ["*"],
-        "allow_headers": ["*"],
+        "allow_methods": ALLOWED_METHODS,
+        "allow_headers": ALLOWED_HEADERS,
+        "expose_headers": ["X-Request-ID", "X-RateLimit-Limit", "X-RateLimit-Remaining", "X-RateLimit-Reset"],
+        "max_age": 3600,  # 1 час
     }
 
 def get_logging_config():
     """Получить конфигурацию логирования"""
     return {
-        "level": LOG_LEVEL,
+        "log_level": LOG_LEVEL,
         "enable_file_logging": LOG_TO_FILE,
         "enable_json_logging": LOG_JSON_FORMAT,
     }

@@ -1,7 +1,32 @@
 // frontend/src/services/api.js
 // Полноценный API клиент для системы волонтеров
 
-const API_BASE_URL = '/api';
+import axios from 'axios';
+
+const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
+const apiClient = axios.create({
+    baseURL: API_URL,
+    headers: {
+        'Content-Type': 'application/json'
+    }
+});
+
+// Добавляем перехватчик для добавления токена и данных Telegram
+apiClient.interceptors.request.use((config) => {
+    // Добавляем JWT токен если есть
+    const token = localStorage.getItem('token');
+    if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+    }
+
+    // Добавляем данные Telegram если есть
+    if (window.Telegram?.WebApp?.initData) {
+        config.headers['X-Telegram-Init-Data'] = window.Telegram.WebApp.initData;
+    }
+
+    return config;
+});
 
 // Получение заголовков с аутентификацией
 const getHeaders = () => {
@@ -20,7 +45,7 @@ const getHeaders = () => {
 // Базовая функция для запросов
 export const apiRequest = async (url, options = {}) => {
   try {
-    const response = await fetch(`${API_BASE_URL}${url}`, {
+    const response = await fetch(`${API_URL}${url}`, {
       ...options,
       headers: {
         ...getHeaders(),
@@ -45,30 +70,27 @@ export const apiRequest = async (url, options = {}) => {
 // ==========================================
 
 export const verifyTelegramAuth = async (initData) => {
-  return apiRequest('/auth/verify', {
-    method: 'POST',
-    headers: {
-      'X-Telegram-Init-Data': initData,
-    },
-  });
+    const response = await apiClient.post('/api/auth/verify', null, {
+        headers: {
+            'X-Telegram-Init-Data': initData
+        }
+    });
+    return response.data;
 };
 
 export const getCurrentUser = async () => {
-  return apiRequest('/auth/me');
+    const response = await apiClient.get('/api/auth/me');
+    return response.data;
 };
 
 export const completeRegistration = async (registrationData) => {
-  return apiRequest('/auth/complete-registration', {
-    method: 'POST',
-    body: JSON.stringify(registrationData),
-  });
+    const response = await apiClient.post('/api/auth/complete-registration', registrationData);
+    return response.data;
 };
 
-export const updateProfile = async (profileData) => {
-  return apiRequest('/auth/profile', {
-    method: 'PUT',
-    body: JSON.stringify(profileData),
-  });
+export const updateProfile = async (userData) => {
+    const response = await apiClient.put('/api/auth/profile', userData);
+    return response.data;
 };
 
 export const changeUserRole = async (userId, newRole) => {
@@ -87,44 +109,44 @@ export const getUsers = async (filters = {}) => {
 // EVENTS API
 // ==========================================
 
-export const getEvents = async (filters = {}) => {
-  const params = new URLSearchParams(filters);
-  return apiRequest(`/events?${params}`);
+export const getEvents = async () => {
+    const response = await apiClient.get('/api/events');
+    return response.data;
 };
 
 export const getEvent = async (eventId) => {
-  return apiRequest(`/events/${eventId}`);
+    const response = await apiClient.get(`/api/events/${eventId}`);
+    return response.data;
 };
 
 export const createEvent = async (eventData) => {
-  return apiRequest('/events', {
-    method: 'POST',
-    body: JSON.stringify(eventData),
-  });
+    const response = await apiClient.post('/api/events', eventData);
+    return response.data;
 };
 
 export const updateEvent = async (eventId, eventData) => {
-  return apiRequest(`/events/${eventId}`, {
-    method: 'PUT',
-    body: JSON.stringify(eventData),
-  });
+    const response = await apiClient.put(`/api/events/${eventId}`, eventData);
+    return response.data;
 };
 
 export const deleteEvent = async (eventId) => {
-  return apiRequest(`/events/${eventId}`, {
-    method: 'DELETE',
-  });
+    const response = await apiClient.delete(`/api/events/${eventId}`);
+    return response.data;
 };
 
 export const getMyEvents = async () => {
-  return apiRequest('/events/my/created');
+    const response = await apiClient.get('/api/events/my/created');
+    return response.data;
 };
 
 export const publishEvent = async (eventId) => {
-  return apiRequest(`/events/${eventId}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify({ status: 'published' }),
-  });
+    const response = await apiClient.patch(`/api/events/${eventId}/status`, { status: 'published' });
+    return response.data;
+};
+
+export const cancelEvent = async (eventId) => {
+    const response = await apiClient.patch(`/api/events/${eventId}/status`, { status: 'cancelled' });
+    return response.data;
 };
 
 // ==========================================
@@ -132,24 +154,23 @@ export const publishEvent = async (eventId) => {
 // ==========================================
 
 export const registerForEvent = async (registrationData) => {
-  return apiRequest('/registrations', {
-    method: 'POST',
-    body: JSON.stringify(registrationData),
-  });
+    const response = await apiClient.post('/api/registrations', registrationData);
+    return response.data;
 };
 
 export const getMyRegistrations = async () => {
-  return apiRequest('/registrations/my');
+    const response = await apiClient.get('/api/registrations/my');
+    return response.data;
 };
 
 export const cancelRegistration = async (registrationId) => {
-  return apiRequest(`/registrations/${registrationId}/cancel`, {
-    method: 'POST',
-  });
+    const response = await apiClient.post(`/api/registrations/${registrationId}/cancel`);
+    return response.data;
 };
 
 export const getEventRegistrations = async (eventId) => {
-  return apiRequest(`/registrations/event/${eventId}`);
+    const response = await apiClient.get(`/api/registrations/event/${eventId}`);
+    return response.data;
 };
 
 // ==========================================
@@ -179,32 +200,32 @@ export const updateVolunteer = async (id, volunteerData) => {
 // ==========================================
 
 export const showTelegramAlert = (message) => {
-  if (window.Telegram?.WebApp) {
-    window.Telegram.WebApp.showAlert(message);
-  } else {
-    alert(message);
-  }
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showAlert(message);
+    } else {
+        alert(message);
+    }
 };
 
 export const showTelegramConfirm = (message, callback) => {
-  if (window.Telegram?.WebApp) {
-    window.Telegram.WebApp.showConfirm(message, callback);
-  } else {
-    const result = window.confirm(message);
-    callback(result);
-  }
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.showConfirm(message, callback);
+    } else {
+        const result = window.confirm(message);
+        callback(result);
+    }
 };
 
 export const closeTelegramApp = () => {
-  if (window.Telegram?.WebApp) {
-    window.Telegram.WebApp.close();
-  }
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.close();
+    }
 };
 
 export const expandTelegramApp = () => {
-  if (window.Telegram?.WebApp) {
-    window.Telegram.WebApp.expand();
-  }
+    if (window.Telegram?.WebApp) {
+        window.Telegram.WebApp.expand();
+    }
 };
 
 // ==========================================
@@ -212,27 +233,27 @@ export const expandTelegramApp = () => {
 // ==========================================
 
 export const EVENT_CATEGORIES = {
-  SOCIAL: 'social',
-  ENVIRONMENTAL: 'environmental',
-  EDUCATION: 'education',
-  HEALTH: 'health',
-  COMMUNITY: 'community',
-  EMERGENCY: 'emergency',
-  SPORTS: 'sports',
-  CULTURE: 'culture',
-  OTHER: 'other'
+    ENVIRONMENTAL: 'environmental',
+    SOCIAL: 'social',
+    EDUCATION: 'education',
+    HEALTH: 'health',
+    COMMUNITY: 'community',
+    CULTURE: 'culture',
+    SPORTS: 'sports',
+    EMERGENCY: 'emergency',
+    OTHER: 'other'
 };
 
 export const EVENT_CATEGORY_LABELS = {
-  [EVENT_CATEGORIES.SOCIAL]: 'Социальные',
-  [EVENT_CATEGORIES.ENVIRONMENTAL]: 'Экология',
-  [EVENT_CATEGORIES.EDUCATION]: 'Образование',
-  [EVENT_CATEGORIES.HEALTH]: 'Здравоохранение',
-  [EVENT_CATEGORIES.COMMUNITY]: 'Сообщество',
-  [EVENT_CATEGORIES.EMERGENCY]: 'Экстренные',
-  [EVENT_CATEGORIES.SPORTS]: 'Спорт',
-  [EVENT_CATEGORIES.CULTURE]: 'Культура',
-  [EVENT_CATEGORIES.OTHER]: 'Другое'
+    [EVENT_CATEGORIES.ENVIRONMENTAL]: 'Экология',
+    [EVENT_CATEGORIES.SOCIAL]: 'Социальные',
+    [EVENT_CATEGORIES.EDUCATION]: 'Образование',
+    [EVENT_CATEGORIES.HEALTH]: 'Здоровье',
+    [EVENT_CATEGORIES.COMMUNITY]: 'Сообщество',
+    [EVENT_CATEGORIES.CULTURE]: 'Культура',
+    [EVENT_CATEGORIES.SPORTS]: 'Спорт',
+    [EVENT_CATEGORIES.EMERGENCY]: 'Экстренные',
+    [EVENT_CATEGORIES.OTHER]: 'Другое'
 };
 
 export const EVENT_STATUS = {
@@ -245,15 +266,13 @@ export const EVENT_STATUS = {
 export const REGISTRATION_STATUS = {
   PENDING: 'pending',
   CONFIRMED: 'confirmed',
-  REJECTED: 'rejected',
-  CANCELLED: 'cancelled',
-  COMPLETED: 'completed'
+  CANCELLED: 'cancelled'
 };
 
 export const USER_ROLES = {
-  VOLUNTEER: 'volunteer',
+  ADMIN: 'admin',
   ORGANIZER: 'organizer',
-  ADMIN: 'admin'
+  VOLUNTEER: 'volunteer'
 };
 
 // ==========================================
@@ -271,24 +290,23 @@ export const validatePhone = (phone) => {
 };
 
 export const formatDate = (dateString) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ru-RU', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit'
+    });
 };
 
 export const formatDateShort = (dateString) => {
-  const date = new Date(dateString);
-  return date.toLocaleDateString('ru-RU', {
-    day: 'numeric',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit'
-  });
+    const date = new Date(dateString);
+    return date.toLocaleDateString('ru-RU', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric'
+    });
 };
 
 // ==========================================
@@ -296,19 +314,19 @@ export const formatDateShort = (dateString) => {
 // ==========================================
 
 export const handleApiError = (error, showAlert = true) => {
-  console.error('API Error:', error);
-
-  let message = 'Произошла ошибка';
-
-  if (error.message) {
-    message = error.message;
-  } else if (typeof error === 'string') {
-    message = error;
-  }
-
-  if (showAlert) {
-    showTelegramAlert(message);
-  }
-
-  return message;
+    console.error('API Error:', error);
+    
+    let message = 'Произошла ошибка при выполнении запроса';
+    
+    if (error.response) {
+        message = error.response.data?.detail || error.response.data?.message || message;
+    } else if (error.message) {
+        message = error.message;
+    }
+    
+    if (showAlert) {
+        showTelegramAlert(message);
+    }
+    
+    return message;
 };

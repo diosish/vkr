@@ -1,9 +1,9 @@
 # backend/api/auth.py
 """
-Улучшенная система аутентификации без dev обходов
+Улучшенная система аутентификации с rate limiting
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Header, status
+from fastapi import APIRouter, Depends, HTTPException, Header, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, EmailStr, validator
@@ -21,6 +21,7 @@ from backend.config import TELEGRAM_BOT_TOKEN, SECRET_KEY
 from backend.models.user import User, UserRole
 from backend.models.volunteer_profile import VolunteerProfile
 from backend.core.logging import get_logger
+from backend.middleware.rate_limit import auth_rate_limiter, rate_limit
 
 router = APIRouter()
 logger = get_logger(__name__)
@@ -87,6 +88,22 @@ class UserRegistrationRequest(BaseModel):
             raise ValueError('Invalid gender')
         return v
 
+    @validator('phone')
+    def validate_phone(cls, v):
+        if v:
+            # Убираем все кроме цифр и +
+            cleaned = ''.join(c for c in v if c.isdigit() or c == '+')
+            if len(cleaned) < 10 or len(cleaned) > 15:
+                raise ValueError('Invalid phone number')
+        return v
+
+    @validator('inn')
+    def validate_inn(cls, v):
+        if v:
+            if not v.isdigit() or len(v) not in [10, 12]:
+                raise ValueError('INN must be 10 or 12 digits')
+        return v
+
 
 class UserResponse(BaseModel):
     id: int
@@ -137,7 +154,6 @@ class AuthResponse(BaseModel):
 def verify_telegram_data(init_data: str) -> Dict:
     """
     Строгая проверка данных Telegram WebApp
-    Без обходов для разработки!
     """
     if not init_data:
         raise TelegramAuthError("Missing Telegram init data")
@@ -362,13 +378,17 @@ def get_volunteer_profile_safely(user: User, db: Session) -> Optional[VolunteerP
 
 
 @router.post("/verify", response_model=AuthResponse)
+@rate_limit(auth_rate_limiter)
 async def verify_auth(
+        request: Request,
         x_telegram_init_data: str = Header(...),
         db: Session = Depends(get_db)
 ):
     """Верификация пользователя Telegram с выдачей JWT токена"""
+    client_ip = auth_rate_limiter.get_client_ip(request)
+
     try:
-        # Проверяем данные Telegram (без обходов!)
+        # Проверяем данные Telegram
         telegram_data = verify_telegram_data(x_telegram_init_data)
 
         # Получаем или создаем пользователя
@@ -376,6 +396,9 @@ async def verify_auth(
 
         # Создаем JWT токен
         access_token = create_access_token(user.id, user.telegram_user_id)
+
+        # Сброс счетчика неудачных попыток при успешной аутентификации
+        auth_rate_limiter.reset_failed_attempts(client_ip)
 
         # Проверяем нужна ли дополнительная регистрация
         requires_registration = False
@@ -437,12 +460,15 @@ async def verify_auth(
         )
 
     except TelegramAuthError as e:
+        # Записываем неудачную попытку
+        auth_rate_limiter.record_failed_attempt(client_ip)
         logger.error(f"Telegram auth error: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=str(e)
         )
     except Exception as e:
+        auth_rate_limiter.record_failed_attempt(client_ip)
         logger.error(f"Auth verification failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -507,8 +533,21 @@ async def complete_registration(
 ):
     """Завершение регистрации пользователя"""
     try:
+        # Проверяем что пользователь не пытается стать админом
+        if registration_data.role == 'admin' and current_user.role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Cannot set admin role"
+            )
+
         # Обновляем роль если изменилась
         if registration_data.role and current_user.role.value != registration_data.role:
+            # Проверяем что изменение роли разрешено
+            if current_user.role == UserRole.ADMIN and registration_data.role != 'admin':
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Admin cannot change to non-admin role"
+                )
             current_user.role = UserRole(registration_data.role)
 
         # Обновляем основные данные
@@ -588,7 +627,9 @@ async def update_profile(
 
 
 @router.post("/refresh-token")
+@rate_limit(auth_rate_limiter)
 async def refresh_token(
+        request: Request,
         current_user: User = Depends(get_current_user)
 ):
     """Обновление JWT токена"""

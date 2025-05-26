@@ -1,5 +1,5 @@
 """
-Главный файл приложения с улучшенной архитектурой
+Главный файл приложения с улучшенной архитектурой и rate limiting
 """
 
 from fastapi import FastAPI, Request, HTTPException, status
@@ -20,6 +20,9 @@ from backend.config import (
 )
 from backend.core.logging import setup_logging, get_logger
 from backend.database import init_db, check_db_connection, get_db_info
+from backend.middleware.rate_limit import (
+    RateLimitMiddleware, general_rate_limiter, auth_rate_limiter
+)
 
 # Настройка логирования при запуске
 logging_config = get_logging_config()
@@ -55,6 +58,11 @@ async def lifespan(app: FastAPI):
     logger.info("🚀 Запуск приложения...")
     print_config_info()
 
+    # Запуск фоновых задач rate limiter
+    await general_rate_limiter.start_cleanup()
+    await auth_rate_limiter.start_cleanup()
+    logger.info("✅ Rate limiters запущены")
+
     # Проверяем подключение к БД
     if not check_db_connection():
         logger.error("💥 Не удалось подключиться к базе данных!")
@@ -81,6 +89,11 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("🛑 Остановка приложения...")
+
+    # Остановка фоновых задач
+    await general_rate_limiter.stop_cleanup()
+    await auth_rate_limiter.stop_cleanup()
+
     logger.info("✅ Приложение остановлено")
 
 # Создание приложения
@@ -93,11 +106,18 @@ app = FastAPI(
     redoc_url="/redoc" if not IS_PRODUCTION else None
 )
 
-# Добавляем middleware
+# Добавляем middleware в правильном порядке
 app.add_middleware(GZipMiddleware, minimum_size=1000)
 app.add_middleware(RequestIDMiddleware)
 
-# CORS middleware
+# Rate limiting middleware
+app.add_middleware(
+    RateLimitMiddleware,
+    rate_limiter=general_rate_limiter,
+    exclude_paths=["/health", "/docs", "/redoc", "/openapi.json", "/static"]
+)
+
+# CORS middleware (должен быть последним)
 cors_config = get_cors_config()
 app.add_middleware(CORSMiddleware, **cors_config)
 
@@ -243,8 +263,9 @@ async def get_config():
         "webapp_url": WEBAPP_URL,
         "is_development": IS_DEVELOPMENT,
         "features": {
-            "notifications": True,  # Можно вынести в config
+            "notifications": True,
             "file_upload": True,
+            "rate_limiting": True,
         }
     }
 
