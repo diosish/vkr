@@ -8,6 +8,7 @@ from fastapi.responses import StreamingResponse
 import csv
 from io import StringIO
 import logging
+from backend.models.registration import Registration, RegistrationStatus
 
 from backend.database import get_db
 from backend.api.auth import get_current_user
@@ -321,10 +322,10 @@ async def get_event(
     approved_registrations = 0
     pending_registrations = 0
     if current_user.is_admin() or event.creator_id == current_user.id:
-        regs = db.query(Registration).filter(Registration.event_id == event_id).all()
-        total_registrations = len(regs)
-        approved_registrations = sum(1 for r in regs if r.status == RegistrationStatus.APPROVED)
-        pending_registrations = sum(1 for r in regs if r.status == RegistrationStatus.PENDING)
+        registrations = db.query(Registration).filter(Registration.event_id == event_id).all()
+        total_registrations = len(registrations)
+        approved_registrations = len([r for r in registrations if r.status == RegistrationStatus.CONFIRMED])
+        pending_registrations = len([r for r in registrations if r.status == RegistrationStatus.PENDING])
 
     event_data = {
         "id": event.id,
@@ -507,12 +508,14 @@ async def update_event(
     return event
 
 
-@router.delete("/{event_id}", response_model=EventResponse)
+@router.delete("/{event_id}")
 async def delete_event(
         event_id: int,
         current_user: User = Depends(get_current_user),
         db: Session = Depends(get_db)
 ):
+    """Удалить мероприятие (мягкое удаление через статус CANCELLED)"""
+
     event = db.query(Event).filter(Event.id == event_id).first()
     if not event:
         raise HTTPException(status_code=404, detail="Мероприятие не найдено")
@@ -521,7 +524,8 @@ async def delete_event(
     if event.creator_id != current_user.id and current_user.role != UserRole.ADMIN:
         raise HTTPException(status_code=403, detail="У вас нет прав на удаление этого мероприятия")
 
-    event.status = EventStatus.DELETED
+    # Мягкое удаление - устанавливаем статус CANCELLED
+    event.status = EventStatus.CANCELLED
     event.updated_at = datetime.utcnow()
     db.commit()
     db.refresh(event)
@@ -529,7 +533,7 @@ async def delete_event(
     # Логируем действие
     await log_event_action(db, event.id, current_user.id, EventActionType.DELETE)
 
-    return event
+    return {"message": "Event cancelled successfully", "id": event.id}
 
 
 @router.get("/my/created", response_model=List[EventResponse])

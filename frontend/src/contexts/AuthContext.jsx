@@ -100,13 +100,14 @@ export const AuthProvider = ({ children }) => {
             setUser(data.user);
             setLoading(false);
 
-            if (!data.user.is_registered) {
-                console.log('Пользователь не зарегистрирован, перенаправляем на /register');
-                navigate('/register');
-            } else {
-                console.log('Пользователь зарегистрирован, перенаправляем на /');
-                navigate('/');
-            }
+            // Заменить строку 103-107:
+            const response = await fetch('/api/auth/verify', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Telegram-Init-Data': telegramData || window.Telegram?.WebApp?.initData || ''
+                }
+            });
         } catch (error) {
             console.error('Ошибка входа:', error);
             setError(error.message);

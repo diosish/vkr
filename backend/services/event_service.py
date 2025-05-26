@@ -2,7 +2,7 @@ import requests
 from backend.config import settings
 from backend.models.user import User, UserRole
 from backend.models.event import Event
-from backend.models.registration import RegistrationStatus
+from backend.models.registration import Registration, RegistrationStatus
 from sqlalchemy.orm import Session
 
 # URL бота для отправки уведомлений (замените на свой)
@@ -40,7 +40,8 @@ def notify_organizer_on_full(db: Session, event: Event):
     # Проверяем, укомплектован ли штат
     if event.max_volunteers == 0:
         return
-    confirmed = [r for r in getattr(event, 'registrations', []) if r.status == RegistrationStatus.APPROVED]
+    # Используем CONFIRMED вместо APPROVED
+    confirmed = [r for r in getattr(event, 'registrations', []) if r.status == RegistrationStatus.CONFIRMED]
     if len(confirmed) < event.max_volunteers:
         return
     organizer = event.creator

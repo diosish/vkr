@@ -102,16 +102,22 @@ async def register_for_event(
         )
 
     # Создаем регистрацию
+    # В методе register_for_event заменить строки 111-115:
+
+    # Создаем регистрацию
     registration = Registration(
         user_id=current_user.id,
         event_id=registration_data.event_id,
         motivation=registration_data.motivation,
         relevant_experience=registration_data.relevant_experience,
         availability_notes=registration_data.availability_notes,
-        special_requirements=registration_data.special_requirements
+        special_requirements=registration_data.special_requirements,
+        status=RegistrationStatus.PENDING  # Всегда начинаем с PENDING
     )
 
     db.add(registration)
+    db.commit()
+    db.refresh(registration)
 
     # Увеличиваем счетчик волонтеров (если автоподтверждение)
     # Пока делаем автоподтверждение для простоты
@@ -272,7 +278,9 @@ async def cancel_registration(
 
     # Отменяем регистрацию
     if registration.status == RegistrationStatus.CONFIRMED:
-        registration.event.current_volunteers_count -= 1
+        # Уменьшаем счетчик только если это было подтверждено
+        # Но так как у нас счетчик вычисляется динамически, это не нужно
+        pass
 
     registration.status = RegistrationStatus.CANCELLED
     registration.updated_at = datetime.utcnow()

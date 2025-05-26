@@ -8,7 +8,7 @@ import enum
 
 class RegistrationStatus(enum.Enum):
     PENDING = "pending"
-    CONFIRMED = "confirmed"
+    CONFIRMED = "confirmed"  # Это правильно
     REJECTED = "rejected"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
@@ -17,8 +17,8 @@ class Registration(Base):
     __tablename__ = "registrations"
 
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    event_id = Column(Integer, ForeignKey("events.id", ondelete="CASCADE"), nullable=False)
 
     # Статус
     status = Column(Enum(RegistrationStatus), default=RegistrationStatus.PENDING)

@@ -80,31 +80,13 @@ export const refreshUserData = async (initData) => {
 
 export const completeRegistration = async (registrationData) => {
   try {
-    // Получаем Telegram user_id из initData, если есть
-    let telegramUserId = null;
-    if (window.Telegram?.WebApp?.initData) {
-      try {
-        const params = new URLSearchParams(window.Telegram.WebApp.initData);
-        const userStr = params.get('user');
-        if (userStr) {
-          const userObj = JSON.parse(userStr);
-          telegramUserId = userObj.id;
-        }
-      } catch (e) {
-        console.warn('Не удалось получить telegram_user_id из initData:', e);
-      }
-    }
-    const dataToSend = { ...registrationData };
-    if (telegramUserId) {
-      dataToSend.telegram_user_id = telegramUserId;
-    }
     const response = await apiRequest('/auth/complete-registration', {
       method: 'POST',
-      body: JSON.stringify(dataToSend),
+      body: JSON.stringify(registrationData),
     });
     return response;
   } catch (error) {
     console.error('Registration error:', error);
     throw error;
   }
-}; 
+};

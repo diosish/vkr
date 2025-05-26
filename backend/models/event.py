@@ -93,6 +93,23 @@ class Event(Base):
     creator = relationship("User", backref=backref("created_events", cascade="all, delete-orphan"))
     logs = relationship("EventLog", back_populates="event", cascade="all, delete-orphan")
 
+    # Добавить в класс Event:
+
+
+    @property
+    def available_slots(self):
+        """Доступные места"""
+        if self.max_volunteers == 0:
+            return float('inf')
+        return max(0, self.max_volunteers - self.current_volunteers_count)
+
+    @property
+    def progress_percentage(self):
+        """Процент заполнения"""
+        if self.max_volunteers == 0:
+            return 0
+        return int((self.current_volunteers_count / self.max_volunteers) * 100)
+
     @property
     def is_active(self):
         """Активно ли мероприятие"""
@@ -106,12 +123,7 @@ class Event(Base):
             return self.is_active and now < self.registration_deadline
         return self.is_active and now < self.start_date
 
-    @property
-    def available_slots(self):
-        """Доступные места"""
-        if self.max_volunteers == 0:
-            return float('inf')
-        return max(0, self.max_volunteers - self.current_volunteers_count)
+
 
     @property
     def is_full(self):
@@ -136,6 +148,14 @@ class Event(Base):
 
     def __repr__(self):
         return f"<Event(id={self.id}, title='{self.title}', status='{self.status.value}')>"
+
+    @property
+    def current_volunteers_count(self):
+        """Текущее количество подтвержденных волонтеров"""
+        if hasattr(self, 'registrations'):
+            return len([r for r in self.registrations if r.status == RegistrationStatus.CONFIRMED])
+        return 0
+
 
 class EventLog(Base):
     __tablename__ = "event_logs"
