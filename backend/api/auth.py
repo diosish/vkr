@@ -134,123 +134,115 @@ class AuthResponse(BaseModel):
     requires_registration: bool = False
 
 
-class TelegramAuthService:
-    """Сервис для работы с Telegram аутентификацией"""
+def verify_telegram_data(init_data: str) -> Dict:
+    """
+    Строгая проверка данных Telegram WebApp
+    Без обходов для разработки!
+    """
+    if not init_data:
+        raise TelegramAuthError("Missing Telegram init data")
 
-    @staticmethod
-    def verify_telegram_data(init_data: str) -> Dict:
-        """
-        Строгая проверка данных Telegram WebApp
-        Без обходов для разработки!
-        """
-        if not init_data:
-            raise TelegramAuthError("Missing Telegram init data")
+    if not TELEGRAM_BOT_TOKEN:
+        raise TelegramAuthError("Bot token not configured")
 
-        if not TELEGRAM_BOT_TOKEN:
-            raise TelegramAuthError("Bot token not configured")
+    try:
+        # Парсим параметры
+        parsed_data = {}
+        for item in init_data.split('&'):
+            if '=' in item:
+                key, value = item.split('=', 1)
+                parsed_data[key] = unquote(value)
 
-        try:
-            # Парсим параметры
-            parsed_data = {}
-            for item in init_data.split('&'):
-                if '=' in item:
-                    key, value = item.split('=', 1)
-                    parsed_data[key] = unquote(value)
+        # Проверяем наличие обязательных полей
+        if 'hash' not in parsed_data:
+            raise TelegramAuthError("Missing hash in init data")
 
-            # Проверяем наличие обязательных полей
-            if 'hash' not in parsed_data:
-                raise TelegramAuthError("Missing hash in init data")
+        if 'user' not in parsed_data:
+            raise TelegramAuthError("Missing user data")
 
-            if 'user' not in parsed_data:
-                raise TelegramAuthError("Missing user data")
+        # Извлекаем хеш
+        received_hash = parsed_data.pop('hash')
 
-            # Извлекаем хеш
-            received_hash = parsed_data.pop('hash')
+        # Создаем строку для проверки (параметры должны быть отсортированы)
+        check_string = '\n'.join([
+            f"{k}={v}" for k, v in sorted(parsed_data.items())
+        ])
 
-            # Создаем строку для проверки (параметры должны быть отсортированы)
-            check_string = '\n'.join([
-                f"{k}={v}" for k, v in sorted(parsed_data.items())
-            ])
+        # Вычисляем HMAC
+        secret_key = hmac.new(
+            "WebAppData".encode(),
+            TELEGRAM_BOT_TOKEN.encode(),
+            hashlib.sha256
+        ).digest()
 
-            # Вычисляем HMAC
-            secret_key = hmac.new(
-                "WebAppData".encode(),
-                TELEGRAM_BOT_TOKEN.encode(),
-                hashlib.sha256
-            ).digest()
+        expected_hash = hmac.new(
+            secret_key,
+            check_string.encode(),
+            hashlib.sha256
+        ).hexdigest()
 
-            expected_hash = hmac.new(
-                secret_key,
-                check_string.encode(),
-                hashlib.sha256
-            ).hexdigest()
+        # Сравниваем хеши
+        if not hmac.compare_digest(received_hash, expected_hash):
+            logger.warning(f"Hash mismatch: expected {expected_hash}, got {received_hash}")
+            raise TelegramAuthError("Invalid hash signature")
 
-            # Сравниваем хеши
-            if not hmac.compare_digest(received_hash, expected_hash):
-                logger.warning(f"Hash mismatch: expected {expected_hash}, got {received_hash}")
-                raise TelegramAuthError("Invalid hash signature")
+        # Проверяем время создания данных
+        auth_date = int(parsed_data.get('auth_date', 0))
+        if datetime.utcnow().timestamp() - auth_date > TELEGRAM_AUTH_EXPIRE_HOURS * 3600:
+            raise TelegramAuthError("Auth data expired")
 
-            # Проверяем время создания данных
-            auth_date = int(parsed_data.get('auth_date', 0))
-            if datetime.utcnow().timestamp() - auth_date > TELEGRAM_AUTH_EXPIRE_HOURS * 3600:
-                raise TelegramAuthError("Auth data expired")
+        # Парсим данные пользователя
+        user_data = json.loads(parsed_data['user'])
 
-            # Парсим данные пользователя
-            user_data = json.loads(parsed_data['user'])
+        logger.info(f"Successfully verified Telegram auth for user {user_data.get('id')}")
 
-            logger.info(f"Successfully verified Telegram auth for user {user_data.get('id')}")
-
-            return {
-                "user_id": user_data.get("id"),
-                "first_name": user_data.get("first_name"),
-                "last_name": user_data.get("last_name"),
-                "username": user_data.get("username"),
-                "photo_url": user_data.get("photo_url"),
-                "language_code": user_data.get("language_code", "ru"),
-                "is_premium": user_data.get("is_premium", False),
-                "auth_date": auth_date
-            }
-
-        except json.JSONDecodeError as e:
-            logger.error(f"Failed to parse user data: {e}")
-            raise TelegramAuthError("Invalid user data format")
-        except Exception as e:
-            logger.error(f"Auth verification failed: {e}")
-            raise TelegramAuthError(f"Authentication failed: {str(e)}")
-
-
-class JWTService:
-    """Сервис для работы с JWT токенами"""
-
-    @staticmethod
-    def create_access_token(user_id: int, telegram_user_id: int) -> str:
-        """Создание JWT токена"""
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        payload = {
-            "user_id": user_id,
-            "telegram_user_id": telegram_user_id,
-            "exp": expire,
-            "iat": datetime.utcnow(),
-            "type": "access"
+        return {
+            "user_id": user_data.get("id"),
+            "first_name": user_data.get("first_name"),
+            "last_name": user_data.get("last_name"),
+            "username": user_data.get("username"),
+            "photo_url": user_data.get("photo_url"),
+            "language_code": user_data.get("language_code", "ru"),
+            "is_premium": user_data.get("is_premium", False),
+            "auth_date": auth_date
         }
-        return jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGORITHM)
 
-    @staticmethod
-    def verify_token(token: str) -> Dict:
-        """Проверка JWT токена"""
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
-            return payload
-        except jwt.ExpiredSignatureError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token expired"
-            )
-        except jwt.InvalidTokenError:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token"
-            )
+    except json.JSONDecodeError as e:
+        logger.error(f"Failed to parse user data: {e}")
+        raise TelegramAuthError("Invalid user data format")
+    except Exception as e:
+        logger.error(f"Auth verification failed: {e}")
+        raise TelegramAuthError(f"Authentication failed: {str(e)}")
+
+
+def create_access_token(user_id: int, telegram_user_id: int) -> str:
+    """Создание JWT токена"""
+    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    payload = {
+        "user_id": user_id,
+        "telegram_user_id": telegram_user_id,
+        "exp": expire,
+        "iat": datetime.utcnow(),
+        "type": "access"
+    }
+    return jwt.encode(payload, SECRET_KEY, algorithm=JWT_ALGORITHM)
+
+
+def verify_token(token: str) -> Dict:
+    """Проверка JWT токена"""
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[JWT_ALGORITHM])
+        return payload
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token expired"
+        )
+    except jwt.InvalidTokenError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token"
+        )
 
 
 def get_or_create_user(db: Session, telegram_data: Dict) -> tuple[User, bool]:
@@ -328,7 +320,7 @@ def get_current_user(
     # Попытка аутентификации через JWT
     if credentials and credentials.credentials:
         try:
-            payload = JWTService.verify_token(credentials.credentials)
+            payload = verify_token(credentials.credentials)
             user = db.query(User).filter(User.id == payload["user_id"]).first()
             if user:
                 # Обновляем время последней активности
@@ -341,7 +333,7 @@ def get_current_user(
     # Попытка аутентификации через Telegram
     if x_telegram_init_data:
         try:
-            telegram_data = TelegramAuthService.verify_telegram_data(x_telegram_init_data)
+            telegram_data = verify_telegram_data(x_telegram_init_data)
             user, _ = get_or_create_user(db, telegram_data)
             return user
         except TelegramAuthError as e:
@@ -377,13 +369,13 @@ async def verify_auth(
     """Верификация пользователя Telegram с выдачей JWT токена"""
     try:
         # Проверяем данные Telegram (без обходов!)
-        telegram_data = TelegramAuthService.verify_telegram_data(x_telegram_init_data)
+        telegram_data = verify_telegram_data(x_telegram_init_data)
 
         # Получаем или создаем пользователя
         user, is_new_user = get_or_create_user(db, telegram_data)
 
         # Создаем JWT токен
-        access_token = JWTService.create_access_token(user.id, user.telegram_user_id)
+        access_token = create_access_token(user.id, user.telegram_user_id)
 
         # Проверяем нужна ли дополнительная регистрация
         requires_registration = False
@@ -600,7 +592,7 @@ async def refresh_token(
         current_user: User = Depends(get_current_user)
 ):
     """Обновление JWT токена"""
-    access_token = JWTService.create_access_token(
+    access_token = create_access_token(
         current_user.id,
         current_user.telegram_user_id
     )
@@ -610,3 +602,28 @@ async def refresh_token(
         "token_type": "bearer",
         "expires_in": ACCESS_TOKEN_EXPIRE_MINUTES * 60
     }
+
+
+@router.delete("/delete-profile")
+async def delete_profile(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    """Удаление профиля пользователя"""
+    try:
+        # Удаляем связанные данные
+        if current_user.volunteer_profile:
+            db.delete(current_user.volunteer_profile)
+
+        # Удаляем пользователя
+        db.delete(current_user)
+        db.commit()
+
+        return {"message": "Profile deleted successfully"}
+    except Exception as e:
+        logger.error(f"Profile deletion failed: {e}")
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete profile"
+        )
