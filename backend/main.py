@@ -1,365 +1,415 @@
 """
-Полное приложение с отдачей React фронтенда + ДИАГНОСТИКА
+Главный файл приложения с улучшенной архитектурой
 """
 
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Request, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.gzip import GZipMiddleware
 from contextlib import asynccontextmanager
-from sqlalchemy.orm import Session
-from datetime import datetime
+import time
+import uuid
 from pathlib import Path
-import sys
-import shutil
 
-print("=" * 60)
-print("🔍 ДИАГНОСТИКА ИМПОРТОВ")
-print("=" * 60)
+# Импорты конфигурации и логирования
+from backend.config import (
+    APP_NAME, APP_VERSION, APP_DESCRIPTION, WEBAPP_URL,
+    get_cors_config, get_logging_config, print_config_info,
+    FRONTEND_BUILD_DIR, IS_DEVELOPMENT, IS_PRODUCTION
+)
+from backend.core.logging import setup_logging, get_logger
+from backend.database import init_db, check_db_connection, get_db_info
 
-# Исправленные импорты - используем абсолютные пути с префиксом backend
-try:
-    from backend.database import init_db, get_db
-    print("✅ database импортирован")
-except ImportError as e:
-    print(f"❌ database ОШИБКА: {e}")
+# Настройка логирования при запуске
+logging_config = get_logging_config()
+setup_logging(**logging_config)
+logger = get_logger(__name__)
 
-try:
-    from backend.config import ALLOWED_ORIGINS, WEBAPP_URL, TELEGRAM_BOT_TOKEN
-    print("✅ config импортирован")
-except ImportError as e:
-    print(f"❌ config ОШИБКА: {e}")
+# Middleware для добавления request ID
+class RequestIDMiddleware:
+    def __init__(self, app):
+        self.app = app
 
-try:
-    from backend.models.user import User, UserRole
-    print("✅ User model импортирован")
-except ImportError as e:
-    print(f"❌ User model ОШИБКА: {e}")
+    async def __call__(self, scope, receive, send):
+        if scope["type"] == "http":
+            request_id = str(uuid.uuid4())
+            scope["request_id"] = request_id
 
-try:
-    from backend.models.volunteer_profile import VolunteerProfile
-    print("✅ VolunteerProfile model импортирован")
-except ImportError as e:
-    print(f"❌ VolunteerProfile model ОШИБКА: {e}")
+            # Добавляем в headers для ответа
+            async def send_wrapper(message):
+                if message["type"] == "http.response.start":
+                    headers = list(message.get("headers", []))
+                    headers.append([b"x-request-id", request_id.encode()])
+                    message["headers"] = headers
+                await send(message)
 
-try:
-    from backend.models.event import Event, EventStatus, EventCategory
-    print("✅ Event model импортирован")
-except ImportError as e:
-    print(f"❌ Event model ОШИБКА: {e}")
-
-try:
-    from backend.models.registration import Registration, RegistrationStatus
-    print("✅ Registration model импортирован")
-except ImportError as e:
-    print(f"❌ Registration model ОШИБКА: {e}")
-
-print("=" * 60)
-print("🔍 ПРОВЕРКА ФАЙЛОВ")
-print("=" * 60)
-
-# Проверяем наличие файлов
-files_to_check = [
-    "backend/__init__.py",
-    "backend/api/__init__.py",
-    "backend/api/auth.py",
-    "backend/models/__init__.py",
-    "backend/services/__init__.py"
-]
-
-for file_path in files_to_check:
-    if Path(file_path).exists():
-        print(f"✅ {file_path} существует")
-    else:
-        print(f"❌ {file_path} НЕ НАЙДЕН!")
-
-print(f"📁 Python path: {sys.path}")
-print(f"📁 Current working directory: {Path('.').absolute()}")
-
-# Путь к собранному фронтенду
-FRONTEND_BUILD = Path("frontend/build")
-
-BACKUP_PATH = Path("volunteer_backup.db")
-DB_PATH = Path("volunteer.db")
-
-def backup_db():
-    if DB_PATH.exists():
-        shutil.copyfile(DB_PATH, BACKUP_PATH)
-        print(f"✅ Резервная копия базы создана: {BACKUP_PATH}")
-
-def restore_db_if_needed():
-    if not DB_PATH.exists() and BACKUP_PATH.exists():
-        shutil.copyfile(BACKUP_PATH, DB_PATH)
-        print(f"⚠️ Основная база отсутствует, восстановлено из {BACKUP_PATH}")
+            await self.app(scope, receive, send_wrapper)
+        else:
+            await self.app(scope, receive, send)
 
 # Lifecycle событие
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    restore_db_if_needed()
-    print("🚀 Запуск сервера...")
-    print(f"🌐 Webapp URL: {WEBAPP_URL}")
-    print(f"📁 Frontend: {'✅ Найден' if FRONTEND_BUILD.exists() else '❌ Не найден'}")
-    init_db()
-    backup_db()
-    yield
-    print("🛑 Остановка сервера...")
+    # Startup
+    logger.info("🚀 Запуск приложения...")
+    print_config_info()
 
-def create_test_data():
-    """Создание тестовых данных"""
-    print("📊 Создание тестовых данных...")
+    # Проверяем подключение к БД
+    if not check_db_connection():
+        logger.error("💥 Не удалось подключиться к базе данных!")
+        raise Exception("Database connection failed")
 
-    db = next(get_db())
-
+    # Инициализируем БД
     try:
-        # Проверяем есть ли уже пользователи
-        existing_user = db.query(User).first()
-        if existing_user:
-            print("  ℹ️ Тестовые данные уже существуют")
-            db.close()
-            return
-
-        # Создаем тестовых пользователей
-        admin_user = User(
-            telegram_user_id=123456789,
-            telegram_username="admin_test",
-            first_name="Админ",
-            last_name="Тестовый",
-            email="admin@test.com",
-            phone="+7 (999) 111-11-11",
-            role=UserRole.ADMIN
-        )
-
-        organizer_user = User(
-            telegram_user_id=987654321,
-            telegram_username="organizer_test",
-            first_name="Организатор",
-            last_name="Тестовый",
-            email="organizer@test.com",
-            phone="+7 (999) 222-22-22",
-            role=UserRole.ORGANIZER
-        )
-
-        volunteer_user = User(
-            telegram_user_id=111222333,
-            telegram_username="volunteer_test",
-            first_name="Волонтер",
-            last_name="Тестовый",
-            email="volunteer@test.com",
-            phone="+7 (999) 333-33-33",
-            role=UserRole.VOLUNTEER
-        )
-
-        db.add_all([admin_user, organizer_user, volunteer_user])
-        db.commit()
-        db.refresh(organizer_user)
-        db.refresh(volunteer_user)
-
-        # Создаем тестовые мероприятия
-        events_data = [
-            {
-                "creator_id": organizer_user.id,
-                "title": "Уборка парка",
-                "description": "Экологическая акция по уборке городского парка. Приглашаем всех неравнодушных граждан принять участие в улучшении экологической обстановки нашего города.",
-                "short_description": "Помогите сделать наш город чище!",
-                "category": EventCategory.ENVIRONMENTAL,
-                "tags": ["экология", "уборка", "парк", "природа"],
-                "location": "Центральный парк",
-                "address": "ул. Парковая, 1",
-                "start_date": datetime(2024, 12, 15, 10, 0),
-                "end_date": datetime(2024, 12, 15, 16, 0),
-                "max_volunteers": 20,
-                "required_skills": ["Физическая выносливость"],
-                "what_to_bring": "Перчатки, удобная одежда, питьевая вода",
-                "meal_provided": True,
-                "contact_person": "Иван Петров",
-                "contact_phone": "+7 (999) 222-22-22",
-                "status": EventStatus.PUBLISHED,
-                "published_at": datetime.utcnow()
-            },
-            {
-                "creator_id": organizer_user.id,
-                "title": "Помощь в детском доме",
-                "description": "Проведение мастер-классов и игр для детей в детском доме. Подарите детям радость творчества и общения!",
-                "short_description": "Подарите детям радость творчества!",
-                "category": EventCategory.SOCIAL,
-                "tags": ["дети", "творчество", "помощь"],
-                "location": "Детский дом №5",
-                "address": "ул. Детская, 10",
-                "start_date": datetime(2024, 12, 20, 14, 0),
-                "end_date": datetime(2024, 12, 20, 18, 0),
-                "max_volunteers": 10,
-                "required_skills": ["Работа с детьми", "Творческие навыки"],
-                "what_to_bring": "Хорошее настроение",
-                "meal_provided": False,
-                "contact_person": "Мария Петрова",
-                "contact_phone": "+7 (999) 333-33-33",
-                "status": EventStatus.PUBLISHED,
-                "published_at": datetime.utcnow()
-            }
-        ]
-
-        for event_data in events_data:
-            event = Event(**event_data)
-            db.add(event)
-
-        db.commit()
-
-        print("  ✅ Тестовые данные созданы:")
-        print(f"    👤 Пользователи: 3")
-        print(f"    📅 Мероприятия: {len(events_data)}")
-
+        init_db()
+        db_info = get_db_info()
+        logger.info(f"📊 Статистика БД: {db_info}")
     except Exception as e:
-        print(f"  ❌ Ошибка создания тестовых данных: {e}")
-        db.rollback()
-    finally:
-        db.close()
+        logger.error(f"💥 Ошибка инициализации БД: {e}")
+        raise
+
+    # Проверяем наличие фронтенда
+    if FRONTEND_BUILD_DIR.exists():
+        logger.info("✅ Frontend build найден")
+    else:
+        logger.warning("⚠️ Frontend build не найден - работает только API")
+
+    logger.info("✅ Приложение успешно запущено!")
+
+    yield
+
+    # Shutdown
+    logger.info("🛑 Остановка приложения...")
+    logger.info("✅ Приложение остановлено")
 
 # Создание приложения
 app = FastAPI(
-    title="Volunteer Registration System",
-    description="Полная система регистрации волонтеров для Telegram",
-    version="2.0.0",
-    lifespan=lifespan
+    title=APP_NAME,
+    description=APP_DESCRIPTION,
+    version=APP_VERSION,
+    lifespan=lifespan,
+    docs_url="/docs" if not IS_PRODUCTION else None,
+    redoc_url="/redoc" if not IS_PRODUCTION else None
 )
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Добавляем middleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)
+app.add_middleware(RequestIDMiddleware)
 
-print("=" * 60)
-print("🔌 ПОДКЛЮЧЕНИЕ API РОУТЕРОВ")
-print("=" * 60)
+# CORS middleware
+cors_config = get_cors_config()
+app.add_middleware(CORSMiddleware, **cors_config)
+
+# Middleware для логирования запросов
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start_time = time.time()
+    request_id = getattr(request.scope, "request_id", "unknown")
+
+    # Логируем входящий запрос
+    logger.info(
+        f"📥 {request.method} {request.url.path}",
+        extra={
+            "request_id": request_id,
+            "method": request.method,
+            "path": request.url.path,
+            "query": str(request.query_params),
+            "ip": request.client.host if request.client else "unknown"
+        }
+    )
+
+    try:
+        response = await call_next(request)
+        process_time = time.time() - start_time
+
+        # Логируем ответ
+        logger.info(
+            f"📤 {response.status_code} {request.url.path} ({process_time:.3f}s)",
+            extra={
+                "request_id": request_id,
+                "status_code": response.status_code,
+                "process_time": process_time
+            }
+        )
+
+        return response
+
+    except Exception as e:
+        process_time = time.time() - start_time
+        logger.error(
+            f"💥 500 {request.url.path} ({process_time:.3f}s): {str(e)}",
+            extra={
+                "request_id": request_id,
+                "error": str(e),
+                "process_time": process_time
+            },
+            exc_info=True
+        )
+        raise
+
+# Обработчик ошибок
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    request_id = getattr(request.scope, "request_id", "unknown")
+
+    logger.warning(
+        f"🚫 HTTP {exc.status_code}: {exc.detail}",
+        extra={
+            "request_id": request_id,
+            "status_code": exc.status_code,
+            "detail": exc.detail,
+            "path": request.url.path
+        }
+    )
+
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code,
+            "request_id": request_id
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    request_id = getattr(request.scope, "request_id", "unknown")
+
+    logger.error(
+        f"💥 Unhandled error: {str(exc)}",
+        extra={
+            "request_id": request_id,
+            "error_type": type(exc).__name__,
+            "path": request.url.path
+        },
+        exc_info=True
+    )
+
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error" if IS_PRODUCTION else str(exc),
+            "status_code": 500,
+            "request_id": request_id
+        }
+    )
 
 # Подключение API роутеров
+logger.info("🔌 Подключение API роутеров...")
+
 try:
-    from backend.api import auth, events, profile, registrations, volunteers, telegram_auth, admin
-    
-    # Подключаем все роутеры
+    from backend.api import auth, events, registrations, admin
+
     app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
     app.include_router(events.router, prefix="/api/events", tags=["Events"])
-    app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
     app.include_router(registrations.router, prefix="/api/registrations", tags=["Registrations"])
-    app.include_router(volunteers.router, prefix="/api/volunteers", tags=["Volunteers"])
-    app.include_router(telegram_auth.router, prefix="/api/telegram", tags=["Telegram"])
     app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
-    
-    print("✅ Все API роутеры подключены успешно!")
-except ImportError as e:
-    print(f"❌ API роутеры не найдены: {e}")
-except Exception as e:
-    print(f"❌ API роутеры ошибка: {e}")
 
-print("=" * 60)
+    logger.info("✅ API роутеры подключены")
+
+except ImportError as e:
+    logger.error(f"❌ Ошибка импорта API роутеров: {e}")
+    raise
 
 # Статические файлы фронтенда
-if FRONTEND_BUILD.exists():
-    app.mount("/static", StaticFiles(directory=FRONTEND_BUILD / "static"), name="static")
+if FRONTEND_BUILD_DIR.exists():
+    app.mount("/static", StaticFiles(directory=FRONTEND_BUILD_DIR / "static"), name="static")
+    logger.info("✅ Статические файлы фронтенда подключены")
 
-# API Routes
+# API endpoints
 @app.get("/health")
 async def health_check():
-    """Проверка здоровья"""
+    """Проверка здоровья приложения"""
+    db_info = get_db_info()
+
     return {
         "status": "healthy",
-        "service": "volunteer-registration-system",
-        "version": "2.0.0",
+        "service": APP_NAME,
+        "version": APP_VERSION,
+        "environment": "production" if IS_PRODUCTION else "development",
         "webapp_url": WEBAPP_URL,
-        "bot_configured": bool(TELEGRAM_BOT_TOKEN),
-        "frontend": FRONTEND_BUILD.exists()
+        "frontend_available": FRONTEND_BUILD_DIR.exists(),
+        "database": db_info,
+        "timestamp": time.time()
     }
 
-# Простой тестовый endpoint для проверки
-@app.post("/api/test-auth")
-async def test_auth():
-    """Тестовый endpoint аутентификации"""
+@app.get("/api/config")
+async def get_config():
+    """Получить публичную конфигурацию"""
     return {
-        "success": True,
-        "message": "Test auth endpoint works!",
-        "user": {
-            "id": 1,
-            "first_name": "Тест",
-            "role": "volunteer"
+        "app_name": APP_NAME,
+        "app_version": APP_VERSION,
+        "webapp_url": WEBAPP_URL,
+        "is_development": IS_DEVELOPMENT,
+        "features": {
+            "notifications": True,  # Можно вынести в config
+            "file_upload": True,
         }
     }
 
-# Отдача React приложения для всех остальных маршрутов
-if FRONTEND_BUILD.exists():
+# Простой тестовый endpoint
+@app.get("/api/ping")
+async def ping():
+    """Простой ping endpoint"""
+    return {"message": "pong", "timestamp": time.time()}
+
+# Отдача React приложения
+if FRONTEND_BUILD_DIR.exists():
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        """Отдача React приложения"""
-        # Исключаем API маршруты и статические файлы
+        """Отдача React приложения для всех маршрутов"""
+
+        # Исключаем API маршруты
         if (full_path.startswith("api/") or
             full_path.startswith("docs") or
+            full_path.startswith("redoc") or
             full_path.startswith("health") or
-            full_path.startswith("static/") or
-            full_path.startswith("test/")):
+            full_path.startswith("static/")):
             raise HTTPException(status_code=404, detail="Not found")
 
-        index_file = FRONTEND_BUILD / "index.html"
+        # Отдаем index.html для всех остальных маршрутов
+        index_file = FRONTEND_BUILD_DIR / "index.html"
         if index_file.exists():
-            return HTMLResponse(content=index_file.read_text(encoding='utf-8'))
+            content = index_file.read_text(encoding='utf-8')
+            return HTMLResponse(content=content)
 
         raise HTTPException(status_code=404, detail="Frontend not found")
+
 else:
-    # Если фронтенд не собран, показываем информационную страницу
+    # Если фронтенд не собран, показываем dev страницу
     @app.get("/")
-    async def root():
+    async def development_page():
+        """Страница для разработки"""
         return HTMLResponse(content=f"""
         <!DOCTYPE html>
-        <html>
+        <html lang="ru">
         <head>
-            <title>Volunteer System - Development</title>
+            <title>{APP_NAME} - Development</title>
             <meta charset="utf-8">
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
-                body {{ font-family: system-ui; padding: 20px; line-height: 1.6; }}
-                .container {{ max-width: 600px; margin: 0 auto; }}
-                .status {{ padding: 15px; border-radius: 8px; margin: 15px 0; }}
-                .success {{ background: #d4edda; color: #155724; }}
-                .warning {{ background: #fff3cd; color: #856404; }}
+                body {{ 
+                    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+                    padding: 40px; 
+                    line-height: 1.6; 
+                    max-width: 800px;
+                    margin: 0 auto;
+                }}
+                .status {{ 
+                    padding: 16px; 
+                    border-radius: 8px; 
+                    margin: 16px 0; 
+                    border-left: 4px solid;
+                }}
+                .success {{ 
+                    background: #d4edda; 
+                    color: #155724; 
+                    border-color: #28a745;
+                }}
+                .warning {{ 
+                    background: #fff3cd; 
+                    color: #856404; 
+                    border-color: #ffc107;
+                }}
+                .info {{
+                    background: #d1ecf1;
+                    color: #0c5460;
+                    border-color: #17a2b8;
+                }}
+                code {{ 
+                    background: #f8f9fa; 
+                    padding: 2px 6px; 
+                    border-radius: 4px;
+                    font-family: 'Monaco', 'Consolas', monospace;
+                }}
+                .grid {{
+                    display: grid;
+                    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+                    gap: 16px;
+                    margin: 20px 0;
+                }}
+                .card {{
+                    padding: 16px;
+                    border: 1px solid #dee2e6;
+                    border-radius: 8px;
+                    background: white;
+                }}
+                a {{ color: #007bff; text-decoration: none; }}
+                a:hover {{ text-decoration: underline; }}
             </style>
         </head>
         <body>
-            <div class="container">
-                <h1>🚀 Volunteer Registration System</h1>
-                
-                <div class="status success">
-                    <strong>Backend:</strong> ✅ Работает на порту 8000
-                </div>
-                
-                <div class="status warning">
-                    <strong>Frontend:</strong> ⚠️ Не собран
-                </div>
-                
-                <h2>Для разработки:</h2>
-                <ol>
-                    <li>Запустите фронтенд: <code>cd frontend && npm start</code></li>
-                    <li>Откройте: <a href="http://localhost:3000">http://localhost:3000</a></li>
-                </ol>
-                
-                <h2>Для продакшена:</h2>
-                <ol>
-                    <li>Соберите фронтенд: <code>cd frontend && npm run build</code></li>
-                    <li>Перезапустите сервер</li>
-                </ol>
-                
-                <h2>API:</h2>
-                <ul>
-                    <li><a href="/docs">📖 Документация</a></li>
-                    <li><a href="/health">🔍 Здоровье</a></li>
-                    <li><a href="/api/test-auth">🧪 Тест авторизации</a></li>
-                </ul>
-                
-                <p><strong>WebApp URL:</strong> {WEBAPP_URL}</p>
+            <h1>🚀 {APP_NAME}</h1>
+            <p>Версия: <strong>{APP_VERSION}</strong> | Режим: <strong>Разработка</strong></p>
+            
+            <div class="status success">
+                <strong>✅ Backend запущен</strong><br>
+                API сервер работает на порту 8000
             </div>
+            
+            <div class="status warning">
+                <strong>⚠️ Frontend не собран</strong><br>
+                Для работы с интерфейсом необходимо собрать фронтенд
+            </div>
+            
+            <div class="status info">
+                <strong>🤖 Telegram Bot</strong><br>
+                WebApp URL: <code>{WEBAPP_URL}</code>
+            </div>
+            
+            <h2>🛠️ Для разработки:</h2>
+            <ol>
+                <li>Запустите фронтенд: <code>cd frontend && npm start</code></li>
+                <li>Откройте: <a href="http://localhost:3000">http://localhost:3000</a></li>
+            </ol>
+            
+            <h2>🏗️ Для продакшена:</h2>
+            <ol>
+                <li>Соберите фронтенд: <code>cd frontend && npm run build</code></li>
+                <li>Перезапустите сервер</li>
+            </ol>
+            
+            <h2>📚 API Документация:</h2>
+            <div class="grid">
+                <div class="card">
+                    <h3>🔍 Интерактивная документация</h3>
+                    <a href="/docs">Swagger UI (/docs)</a>
+                </div>
+                <div class="card">
+                    <h3>📖 Альтернативная документация</h3>
+                    <a href="/redoc">ReDoc (/redoc)</a>
+                </div>
+                <div class="card">
+                    <h3>💓 Проверка здоровья</h3>
+                    <a href="/health">Health Check (/health)</a>
+                </div>
+                <div class="card">
+                    <h3>🏓 Простой тест</h3>
+                    <a href="/api/ping">Ping API (/api/ping)</a>
+                </div>
+            </div>
+            
+            <hr style="margin: 40px 0;">
+            <p style="color: #6c757d; font-size: 14px;">
+                💡 <strong>Совет:</strong> После сборки фронтенда эта страница заменится на полнофункциональное приложение
+            </p>
         </body>
         </html>
         """)
 
-print("🎯 Main.py загружен успешно!")
-print("=" * 60)
+# Запуск приложения
+if __name__ == "__main__":
+    import uvicorn
+    from backend.config import API_HOST, API_PORT, DEBUG
+
+    logger.info(f"🌟 Запуск {APP_NAME} v{APP_VERSION}")
+
+    uvicorn.run(
+        "backend.main:app",
+        host=API_HOST,
+        port=API_PORT,
+        reload=DEBUG and IS_DEVELOPMENT,
+        log_config=None,  # Используем нашу систему логирования
+        access_log=False  # Отключаем встроенный access log
+    )
