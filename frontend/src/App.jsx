@@ -11,67 +11,10 @@ import MyRegistrationsPage from './pages/MyRegistrationsPage';
 import CreateEventPage from './pages/CreateEventPage';
 import LoadingSpinner from './components/LoadingSpinner';
 import useTelegram from './hooks/useTelegram';
+import AdminPanelPage from './pages/AdminPanelPage';
+import { authenticateUser, refreshUserData, saveAuthData, getAuthData } from './services/auth';
+import ManageEventsPage from './pages/ManageEventsPage';
 import './App.css';
-
-// API functions
-const verifyTelegramAuth = async (initData) => {
-  try {
-    const response = await fetch('/api/auth/verify', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Telegram-Init-Data': initData || ''
-      }
-    });
-
-    if (!response.ok) {
-      // Если ответ не ok, все равно пытаемся получить данные
-      const errorData = await response.json().catch(() => ({}));
-      console.warn('Auth response not ok:', response.status, errorData);
-      // Не бросаем ошибку, пытаемся работать с тем что есть
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Auth error:', error);
-    // Возвращаем базовую структуру для продолжения работы
-    return {
-      success: true,
-      user: {
-        id: 999,
-        telegram_user_id: 999999999,
-        first_name: 'Гость',
-        last_name: 'Пользователь',
-        role: 'volunteer',
-        display_name: '@guest',
-        profile_completed: false,
-        completion_percentage: 0
-      },
-      is_new_user: true,
-      requires_registration: true,
-      message: 'Guest mode'
-    };
-  }
-};
-
-const getCurrentUser = async (initData) => {
-  try {
-    const response = await fetch('/api/auth/me', {
-      headers: {
-        'X-Telegram-Init-Data': initData || ''
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error('Failed to get user info');
-    }
-
-    return await response.json();
-  } catch (error) {
-    console.error('Get user error:', error);
-    return null;
-  }
-};
 
 function App() {
   const [user, setUser] = useState(null);
@@ -83,17 +26,25 @@ function App() {
   const { tg, showAlert, isSupported } = useTelegram();
 
   useEffect(() => {
-    authenticateUser();
+    initializeApp();
   }, []);
 
-  const authenticateUser = async () => {
+  const initializeApp = async () => {
     try {
       setLoading(true);
       setError(null);
 
-      let initData = '';
+      // 1. Пробуем взять пользователя из localStorage
+      const savedAuth = getAuthData();
+      if (savedAuth?.user) {
+        setUser(savedAuth.user);
+        setShowRegistration(false);
+        setRegistrationStep('welcome');
+        setLoading(false);
+        return;
+      }
 
-      // Пытаемся получить данные Telegram
+      let initData = '';
       if (isSupported && tg?.initData) {
         initData = tg.initData;
         console.log('Using Telegram init data');
@@ -101,10 +52,10 @@ function App() {
         console.log('No Telegram data, using guest mode');
       }
 
-      // Верифицируем через API
-      const authResponse = await verifyTelegramAuth(initData);
+      // Аутентификация пользователя
+      const authResponse = await authenticateUser(initData);
 
-      if (authResponse && authResponse.user) {
+      if (authResponse?.user) {
         setUser(authResponse.user);
 
         // Показываем приветствие для новых пользователей
@@ -155,14 +106,16 @@ function App() {
       setShowRegistration(false);
       setRegistrationStep('welcome');
 
-      // Перезагружаем данные пользователя
-      const updatedUser = await getCurrentUser(tg?.initData);
+      // Обновляем данные пользователя
+      const updatedUser = await refreshUserData(tg?.initData);
       if (updatedUser) {
         setUser(updatedUser);
+        // Сохраняем в localStorage
+        const prevAuth = getAuthData();
+        if (prevAuth) saveAuthData({ ...prevAuth, user: updatedUser });
       }
     } catch (error) {
       console.error('Failed to reload user data:', error);
-      // Не критично, продолжаем с текущими данными
     }
   };
 
@@ -187,7 +140,7 @@ function App() {
       <div className="error-screen">
         <h2>🔄 Инициализация...</h2>
         <p>Подготовка приложения...</p>
-        <button onClick={authenticateUser} className="btn btn-primary">
+        <button onClick={initializeApp} className="btn btn-primary">
           🔄 Повторить
         </button>
       </div>
@@ -257,39 +210,12 @@ function App() {
             <Route path="/profile" element={<ProfilePage user={user} setUser={setUser} />} />
             <Route path="/events" element={<EventsPage user={user} />} />
             <Route path="/events/:id" element={<EventDetailsPage user={user} />} />
-
-            {/* Маршруты для волонтеров */}
-            {user.role === 'volunteer' && (
-              <Route path="/my-registrations" element={<MyRegistrationsPage user={user} />} />
-            )}
-
-            {/* Маршруты для организаторов и админов */}
-            {(user.role === 'organizer' || user.role === 'admin') && (
-              <Route path="/create-event" element={<CreateEventPage user={user} />} />
-            )}
-
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="/my-registrations" element={<MyRegistrationsPage user={user} />} />
+            <Route path="/create-event" element={<CreateEventPage user={user} />} />
+            <Route path="/admin" element={<AdminPanelPage user={user} />} />
+            <Route path="/manage-events" element={<ManageEventsPage user={user} />} />
           </Routes>
         </Layout>
-
-        {/* Floating registration reminder */}
-        {!showRegistration && user && user.completion_percentage < 50 && (
-          <div style={{
-            position: 'fixed',
-            bottom: '80px',
-            right: '16px',
-            background: 'var(--tg-button-color)',
-            color: 'var(--tg-button-text-color)',
-            padding: '12px 16px',
-            borderRadius: '24px',
-            fontSize: '14px',
-            cursor: 'pointer',
-            boxShadow: 'var(--shadow-lg)',
-            zIndex: 1000
-          }} onClick={() => setShowRegistration(true)}>
-            📝 Завершить регистрацию
-          </div>
-        )}
       </Router>
     </div>
   );

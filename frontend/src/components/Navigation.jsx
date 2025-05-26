@@ -28,6 +28,11 @@ const Navigation = ({ user }) => {
         icon: Plus,
         label: 'Создать'
       });
+      baseItems.splice(2, 0, {
+        path: '/manage-events',
+        icon: FileText,
+        label: 'Мои события'
+      });
     }
 
     return baseItems;

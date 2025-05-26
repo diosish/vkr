@@ -2,8 +2,10 @@
 import React, { useState, useEffect } from 'react';
 import { User, Edit, Save, X, Phone, Mail, MapPin, Calendar, Award, Heart } from 'lucide-react';
 import { updateProfile, getCurrentUser } from '../services/api';
+import { saveAuthData, getAuthData, clearAuthData } from '../services/auth';
 import LoadingSpinner from '../components/LoadingSpinner';
 import useTelegram from '../hooks/useTelegram';
+import { useNavigate } from 'react-router-dom';
 
 const ProfilePage = ({ user, setUser }) => {
   const [editMode, setEditMode] = useState(false);
@@ -11,6 +13,7 @@ const ProfilePage = ({ user, setUser }) => {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const { showAlert } = useTelegram();
+  const navigate = useNavigate();
 
   const [formData, setFormData] = useState({
     // Основные данные
@@ -121,6 +124,9 @@ const ProfilePage = ({ user, setUser }) => {
     try {
       const updatedUser = await updateProfile(formData);
       setUser(updatedUser);
+      // Сохраняем в localStorage
+      const prevAuth = getAuthData();
+      if (prevAuth) saveAuthData({ ...prevAuth, user: updatedUser });
       setEditMode(false);
       showAlert('Профиль обновлен! ✅');
     } catch (error) {
@@ -170,6 +176,89 @@ const ProfilePage = ({ user, setUser }) => {
     const filledFields = fields.filter(field => field).length;
     return Math.round((filledFields / fields.length) * 100);
   };
+
+  const handleDeleteProfile = async () => {
+    if (!window.confirm('Вы уверены, что хотите удалить профиль? Это действие необратимо!')) return;
+    try {
+      const response = await fetch('/api/auth/delete-profile', {
+        method: 'DELETE',
+        headers: {
+          'X-Telegram-Init-Data': window.Telegram?.WebApp?.initData || ''
+        }
+      });
+      if (!response.ok) throw new Error('Ошибка удаления профиля');
+      setUser(null);
+      clearAuthData();
+      navigate('/');
+    } catch (e) {
+      alert('Ошибка удаления профиля: ' + e.message);
+    }
+  };
+
+  // --- Альтернативный рендеринг для organizer ---
+  if (user?.role === 'organizer') {
+    console.log('ORGANIZER USER:', user);
+    return (
+      <div className="profile-page">
+        <div className="profile-header card mb-4">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div className="avatar" style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'var(--tg-button-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', color: 'white' }}>
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+              ) : (
+                <User size={40} />
+              )}
+            </div>
+            <div>
+              <h2 className="mb-1">{user?.first_name} {user?.last_name}</h2>
+              <p className="text-muted mb-1">@{user?.telegram_username || 'organizer'}</p>
+              <p className="text-muted font-small">👔 Организатор</p>
+            </div>
+          </div>
+        </div>
+        <div className="card mb-4">
+          <h3 className="mb-3">🏢 Данные организации</h3>
+          <div className="form-group"><b>Название:</b> {user.organization_name || 'Не указано'}</div>
+          <div className="form-group"><b>ИНН:</b> {user.inn || 'Не указан'}</div>
+          <div className="form-group"><b>ОГРН:</b> {user.ogrn || 'Не указан'}</div>
+          <div className="form-group"><b>Контактное лицо:</b> {user.org_contact_name || 'Не указано'}</div>
+          <div className="form-group"><b>Телефон:</b> {user.org_phone || 'Не указан'}</div>
+          <div className="form-group"><b>Email:</b> {user.org_email || 'Не указан'}</div>
+          <div className="form-group"><b>Юр. адрес:</b> {user.org_address || 'Не указан'}</div>
+        </div>
+        <button className="btn btn-danger" onClick={handleDeleteProfile} style={{ marginTop: 16 }}>Удалить профиль</button>
+      </div>
+    );
+  }
+
+  // --- Альтернативный рендеринг для admin ---
+  if (user?.role === 'admin') {
+    return (
+      <div className="profile-page">
+        <div className="profile-header card mb-4">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+            <div className="avatar" style={{ width: '80px', height: '80px', borderRadius: '50%', backgroundColor: 'var(--tg-button-color)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px', color: 'white' }}>
+              {user?.avatar_url ? (
+                <img src={user.avatar_url} alt="Avatar" style={{ width: '100%', height: '100%', borderRadius: '50%' }} />
+              ) : (
+                <User size={40} />
+              )}
+            </div>
+            <div>
+              <h2 className="mb-1">{user?.first_name} {user?.last_name}</h2>
+              <p className="text-muted mb-1">@{user?.telegram_username || 'admin'}</p>
+              <p className="text-muted font-small">🔧 Администратор</p>
+            </div>
+          </div>
+        </div>
+        <div className="card mb-4">
+          <h3 className="mb-3">Права администратора</h3>
+          <p>У вас есть полный доступ к управлению пользователями, организациями и событиями.</p>
+          <button className="btn btn-primary" onClick={() => navigate('/admin')}>Перейти в админ-панель</button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return <LoadingSpinner message="Загрузка профиля..." />;
@@ -567,6 +656,10 @@ const ProfilePage = ({ user, setUser }) => {
           </button>
         </div>
       )}
+
+      <button className="btn btn-danger" onClick={handleDeleteProfile} style={{marginTop: 24}}>
+        Удалить профиль
+      </button>
     </div>
   );
 };

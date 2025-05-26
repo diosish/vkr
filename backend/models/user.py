@@ -43,6 +43,15 @@ class User(Base):
         back_populates="user"
     )
 
+    # Организация
+    organization_name = Column(String, nullable=True)
+    inn = Column(String, nullable=True)
+    ogrn = Column(String, nullable=True)
+    org_contact_name = Column(String, nullable=True)
+    org_phone = Column(String, nullable=True)
+    org_email = Column(String, nullable=True)
+    org_address = Column(String, nullable=True)
+
     @property
     def full_name(self):
         """Полное имя"""

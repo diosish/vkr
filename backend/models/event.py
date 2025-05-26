@@ -1,18 +1,19 @@
 """Упрощенная модель мероприятия"""
 
-from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, JSON, Enum
+from sqlalchemy import Column, Integer, String, DateTime, Text, Boolean, ForeignKey, JSON, Enum as SAEnum
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from backend.database import Base
-import enum
+from backend.models.user import User
+from enum import Enum
 
-class EventStatus(enum.Enum):
+class EventStatus(Enum):
     DRAFT = "draft"
     PUBLISHED = "published"
     CANCELLED = "cancelled"
     COMPLETED = "completed"
 
-class EventCategory(enum.Enum):
+class EventCategory(Enum):
     SOCIAL = "social"
     ENVIRONMENTAL = "environmental"
     EDUCATION = "education"
@@ -21,6 +22,16 @@ class EventCategory(enum.Enum):
     EMERGENCY = "emergency"
     SPORTS = "sports"
     CULTURE = "culture"
+    OTHER = "other"
+
+class EventActionType(str, Enum):
+    CREATE = "create"
+    UPDATE = "update"
+    DELETE = "delete"
+    CANCEL = "cancel"
+    RESTORE = "restore"
+    PUBLISH = "publish"
+    EXPORT = "export"
     OTHER = "other"
 
 class Event(Base):
@@ -35,7 +46,7 @@ class Event(Base):
     short_description = Column(String(500))
 
     # Категоризация
-    category = Column(Enum(EventCategory), default=EventCategory.OTHER)
+    category = Column(SAEnum(EventCategory), default=EventCategory.OTHER)
     tags = Column(JSON)
 
     # Место и время
@@ -69,7 +80,7 @@ class Event(Base):
     contact_email = Column(String(255))
 
     # Статус и метаданные
-    status = Column(Enum(EventStatus), default=EventStatus.DRAFT)
+    status = Column(SAEnum(EventStatus), default=EventStatus.DRAFT)
     is_featured = Column(Boolean, default=False)
     views_count = Column(Integer, default=0)
 
@@ -80,6 +91,7 @@ class Event(Base):
 
     # Связи
     creator = relationship("User", backref="created_events")
+    logs = relationship("EventLog", back_populates="event", cascade="all, delete-orphan")
 
     @property
     def is_active(self):
@@ -124,3 +136,15 @@ class Event(Base):
 
     def __repr__(self):
         return f"<Event(id={self.id}, title='{self.title}', status='{self.status.value}')>"
+
+class EventLog(Base):
+    __tablename__ = "event_logs"
+    id = Column(Integer, primary_key=True, index=True)
+    event_id = Column(Integer, ForeignKey("events.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    action = Column(SAEnum(EventActionType), nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    details = Column(String, nullable=True)
+
+    event = relationship("Event", back_populates="logs")
+    user = relationship("User")

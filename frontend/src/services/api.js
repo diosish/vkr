@@ -18,7 +18,7 @@ const getHeaders = () => {
 };
 
 // Базовая функция для запросов
-const apiRequest = async (url, options = {}) => {
+export const apiRequest = async (url, options = {}) => {
   try {
     const response = await fetch(`${API_BASE_URL}${url}`, {
       ...options,
@@ -87,13 +87,13 @@ export const getUsers = async (filters = {}) => {
 // EVENTS API
 // ==========================================
 
-export const getEvents = async (params = {}) => {
-  const searchParams = new URLSearchParams(params);
-  return apiRequest(`/events?${searchParams}`);
+export const getEvents = async (filters = {}) => {
+  const params = new URLSearchParams(filters);
+  return apiRequest(`/events?${params}`);
 };
 
-export const getEvent = async (id) => {
-  return apiRequest(`/events/${id}`);
+export const getEvent = async (eventId) => {
+  return apiRequest(`/events/${eventId}`);
 };
 
 export const createEvent = async (eventData) => {
@@ -103,15 +103,15 @@ export const createEvent = async (eventData) => {
   });
 };
 
-export const updateEvent = async (id, eventData) => {
-  return apiRequest(`/events/${id}`, {
+export const updateEvent = async (eventId, eventData) => {
+  return apiRequest(`/events/${eventId}`, {
     method: 'PUT',
     body: JSON.stringify(eventData),
   });
 };
 
-export const deleteEvent = async (id) => {
-  return apiRequest(`/events/${id}`, {
+export const deleteEvent = async (eventId) => {
+  return apiRequest(`/events/${eventId}`, {
     method: 'DELETE',
   });
 };
@@ -120,13 +120,16 @@ export const getMyEvents = async () => {
   return apiRequest('/events/my/created');
 };
 
+export const publishEvent = async (eventId) => {
+  return apiRequest(`/events/${eventId}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status: 'published' }),
+  });
+};
+
 // ==========================================
 // REGISTRATIONS API
 // ==========================================
-
-export const getMyRegistrations = async () => {
-  return apiRequest('/registrations/my');
-};
 
 export const registerForEvent = async (registrationData) => {
   return apiRequest('/registrations', {
@@ -135,16 +138,13 @@ export const registerForEvent = async (registrationData) => {
   });
 };
 
-export const updateRegistration = async (registrationId, updateData) => {
-  return apiRequest(`/registrations/${registrationId}`, {
-    method: 'PUT',
-    body: JSON.stringify(updateData),
-  });
+export const getMyRegistrations = async () => {
+  return apiRequest('/registrations/my');
 };
 
 export const cancelRegistration = async (registrationId) => {
-  return apiRequest(`/registrations/${registrationId}`, {
-    method: 'DELETE',
+  return apiRequest(`/registrations/${registrationId}/cancel`, {
+    method: 'POST',
   });
 };
 

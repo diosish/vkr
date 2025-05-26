@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from datetime import datetime
 from pathlib import Path
 import sys
+import shutil
 
 print("=" * 60)
 print("🔍 ДИАГНОСТИКА ИМПОРТОВ")
@@ -78,17 +79,29 @@ print(f"📁 Current working directory: {Path('.').absolute()}")
 # Путь к собранному фронтенду
 FRONTEND_BUILD = Path("frontend/build")
 
+BACKUP_PATH = Path("volunteer_backup.db")
+DB_PATH = Path("volunteer.db")
+
+def backup_db():
+    if DB_PATH.exists():
+        shutil.copyfile(DB_PATH, BACKUP_PATH)
+        print(f"✅ Резервная копия базы создана: {BACKUP_PATH}")
+
+def restore_db_if_needed():
+    if not DB_PATH.exists() and BACKUP_PATH.exists():
+        shutil.copyfile(BACKUP_PATH, DB_PATH)
+        print(f"⚠️ Основная база отсутствует, восстановлено из {BACKUP_PATH}")
+
 # Lifecycle событие
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Startup
+    restore_db_if_needed()
     print("🚀 Запуск сервера...")
     print(f"🌐 Webapp URL: {WEBAPP_URL}")
     print(f"📁 Frontend: {'✅ Найден' if FRONTEND_BUILD.exists() else '❌ Не найден'}")
     init_db()
-    create_test_data()
+    backup_db()
     yield
-    # Shutdown
     print("🛑 Остановка сервера...")
 
 def create_test_data():
@@ -222,35 +235,24 @@ print("=" * 60)
 print("🔌 ПОДКЛЮЧЕНИЕ API РОУТЕРОВ")
 print("=" * 60)
 
-# Подключение API роутеров - ИСПРАВЛЕНО
+# Подключение API роутеров
 try:
-    print("🔍 Попытка импорта backend.api.auth...")
-    from backend.api.auth import router as auth_router
-    app.include_router(auth_router, prefix="/api/auth", tags=["Authentication"])
-    print("✅ Auth API подключен успешно!")
+    from backend.api import auth, events, profile, registrations, volunteers, telegram_auth, admin
+    
+    # Подключаем все роутеры
+    app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+    app.include_router(events.router, prefix="/api/events", tags=["Events"])
+    app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
+    app.include_router(registrations.router, prefix="/api/registrations", tags=["Registrations"])
+    app.include_router(volunteers.router, prefix="/api/volunteers", tags=["Volunteers"])
+    app.include_router(telegram_auth.router, prefix="/api/telegram", tags=["Telegram"])
+    app.include_router(admin.router, prefix="/api/admin", tags=["Admin"])
+    
+    print("✅ Все API роутеры подключены успешно!")
 except ImportError as e:
-    print(f"❌ Auth API НЕ НАЙДЕН: {e}")
-    print("📝 Создайте файл backend/api/auth.py")
+    print(f"❌ API роутеры не найдены: {e}")
 except Exception as e:
-    print(f"❌ Auth API ОШИБКА: {e}")
-
-try:
-    from backend.api.events import router as events_router
-    app.include_router(events_router, prefix="/api/events", tags=["Events"])
-    print("✅ Events API подключен")
-except ImportError as e:
-    print(f"⚠️ Events API не найден: {e}")
-except Exception as e:
-    print(f"❌ Events API ошибка: {e}")
-
-try:
-    from backend.api.registrations import router as registrations_router
-    app.include_router(registrations_router, prefix="/api/registrations", tags=["Registrations"])
-    print("✅ Registrations API подключен")
-except ImportError as e:
-    print(f"⚠️ Registrations API не найден: {e}")
-except Exception as e:
-    print(f"❌ Registrations API ошибка: {e}")
+    print(f"❌ API роутеры ошибка: {e}")
 
 print("=" * 60)
 

@@ -12,6 +12,7 @@ from backend.api.auth import get_current_user
 from backend.models.user import User, UserRole
 from backend.models.event import Event
 from backend.models.registration import Registration, RegistrationStatus
+from backend.services.event_service import notify_organizer_on_full
 
 router = APIRouter()
 
@@ -121,6 +122,10 @@ async def register_for_event(
     db.commit()
     db.refresh(registration)
 
+    # Проверяем, не укомплектовано ли мероприятие после подтверждения
+    if registration.status == RegistrationStatus.CONFIRMED and event.is_full:
+        notify_organizer_on_full(db, event)
+
     # Формируем ответ
     response_data = {
         **registration.__dict__,
@@ -214,6 +219,10 @@ async def update_registration(
         elif old_status != RegistrationStatus.CONFIRMED and new_status == RegistrationStatus.CONFIRMED:
             registration.event.current_volunteers_count += 1
             registration.confirmed_at = datetime.utcnow()
+
+        # Проверяем, не укомплектовано ли мероприятие после подтверждения
+        if new_status == RegistrationStatus.CONFIRMED and registration.event.is_full:
+            notify_organizer_on_full(db, registration.event)
 
     registration.updated_at = datetime.utcnow()
 
